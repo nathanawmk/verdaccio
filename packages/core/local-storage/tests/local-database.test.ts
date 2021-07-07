@@ -5,8 +5,8 @@ import path from 'path';
 import { assign } from 'lodash';
 import { IPluginStorage, PluginOptions } from '@verdaccio/types';
 
-import LocalDatabase from '../src/local-database';
-import { ILocalFSPackageManager } from '../src/local-fs';
+import LocalDatabase from '../src/legacy/local-database';
+import { ILocalFSPackageManager } from '../src/legacy/local-fs';
 import * as pkgUtils from '../src/pkg-utils';
 
 // FIXME: remove this mocks imports

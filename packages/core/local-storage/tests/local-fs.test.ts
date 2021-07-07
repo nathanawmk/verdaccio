@@ -4,7 +4,12 @@ import fs from 'fs';
 import rm from 'rmdir-sync';
 import { Logger, ILocalPackageManager, Package } from '@verdaccio/types';
 
-import LocalDriver, { fileExist, fSError, noSuchFile, resourceNotAvailable } from '../src/local-fs';
+import LocalDriver, {
+  fileExist,
+  fSError,
+  noSuchFile,
+  resourceNotAvailable,
+} from '../src/legacy/local-fs';
 
 import pkg from './__fixtures__/pkg';
 
@@ -277,7 +282,7 @@ describe('Local FS test', () => {
         };
       });
 
-      const LocalDriver = require('../src/local-fs').default;
+      const LocalDriver = require('../src/legacy/local-fs').default;
       const localFs: ILocalPackageManager = new LocalDriver(
         path.join(__dirname, '__fixtures__/update-package'),
         logger
@@ -299,7 +304,7 @@ describe('Local FS test', () => {
             unlockFile: (_something, cb): any => cb(null),
           };
         });
-        require('../src/local-fs').default;
+        require('../src/legacy/local-fs').default;
         const localFs: ILocalPackageManager = new LocalDriver(
           path.join(__dirname, '__fixtures__/update-package'),
           logger
@@ -321,7 +326,7 @@ describe('Local FS test', () => {
             unlockFile: (_something, cb): any => cb(null),
           };
         });
-        const LocalDriver = require('../src/local-fs').default;
+        const LocalDriver = require('../src/legacy/local-fs').default;
         const localFs: ILocalPackageManager = new LocalDriver(
           path.join(__dirname, '__fixtures__/update-package'),
           logger
@@ -343,7 +348,7 @@ describe('Local FS test', () => {
             unlockFile: (_something, cb): any => cb(null),
           };
         });
-        const LocalDriver = require('../src/local-fs').default;
+        const LocalDriver = require('../src/legacy/local-fs').default;
         const localFs: ILocalPackageManager = new LocalDriver(
           path.join(__dirname, '__fixtures__/update-package'),
           logger
@@ -366,7 +371,7 @@ describe('Local FS test', () => {
           };
         });
 
-        const LocalDriver = require('../src/local-fs').default;
+        const LocalDriver = require('../src/legacy/local-fs').default;
         const localFs: ILocalPackageManager = new LocalDriver(
           path.join(__dirname, '__fixtures__/update-package'),
           logger

@@ -399,6 +399,7 @@ importers:
       '@verdaccio/file-locking': workspace:11.0.0-alpha.3
       '@verdaccio/streams': workspace:11.0.0-alpha.3
       '@verdaccio/types': workspace:11.0.0-6-next.7
+      '@verdaccio/utils': workspace:6.0.0-6-next.5
       async: ^3.2.0
       debug: ^4.3.1
       lodash: ^4.17.21
@@ -409,6 +410,7 @@ importers:
       '@verdaccio/commons-api': link:../commons-api
       '@verdaccio/file-locking': link:../file-locking
       '@verdaccio/streams': link:../streams
+      '@verdaccio/utils': link:../../utils
       async: 3.2.0
       debug: 4.3.1
       lodash: 4.17.21
@@ -1059,9 +1061,11 @@ importers:
     specifiers:
       '@verdaccio/commons-api': workspace:11.0.0-alpha.3
       lodash: ^4.17.21
+      minimatch: 3.0.4
       semver: 7.3.2
     dependencies:
       '@verdaccio/commons-api': link:../core/commons-api
+      minimatch: 3.0.4
       semver: 7.3.2
     devDependencies:
       lodash: 4.17.21

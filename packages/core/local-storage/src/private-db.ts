@@ -11,24 +11,27 @@ import {
   IPluginStorage,
   LocalStorage,
   Logger,
-  StorageList,
 } from '@verdaccio/types';
 import { getInternalError } from '@verdaccio/commons-api';
+import { getMatchedPackagesSpec } from '@verdaccio/utils';
 
-import LocalDriver, { noSuchFile } from './local-fs';
+import LocalDriver, { noSuchFile } from './package-cache';
 import { loadPrivatePackages } from './pkg-utils';
 import TokenActions from './token';
 import { _dbGenPath } from './utils';
+import { mkdirPromise, writeFilePromise } from './fs';
 
 const DB_NAME = '.verdaccio-db.json';
 
 const debug = buildDebug('verdaccio:plugin:local-storage');
 
+export const ERROR_DB_LOCKED =
+  'Database is locked, please check error message printed during startup to prevent data loss';
+
 class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
   public path: string;
   public logger: Logger;
-  // @ts-ignore
-  public data: LocalStorage;
+  public data: LocalStorage | void;
   public config: Config;
   public locked: boolean;
 
@@ -37,6 +40,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     this.config = config;
     this.logger = logger;
     this.locked = false;
+    this.data = undefined;
     this.path = _dbGenPath(DB_NAME, config);
     debug('plugin storage path %o', this.path);
   }
@@ -44,30 +48,39 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
   public async init(): Promise<void> {
     debug('plugin init');
     this.data = await this._fetchLocalPackages();
-    this._sync();
+    await this._sync();
   }
 
-  public getSecret(): Promise<string> {
+  public async getSecret(): Promise<string> {
+    if (typeof this.data === 'undefined') {
+      throw Error('no data secret available');
+    }
+
     return Promise.resolve(this.data.secret);
   }
 
-  public setSecret(secret: string): Promise<Error | null> {
-    return new Promise((resolve): void => {
+  public async setSecret(secret: string): Promise<void> {
+    if (typeof this.data === 'undefined') {
+      throw Error('no data secret available');
+    } else {
       this.data.secret = secret;
+    }
 
-      resolve(this._sync());
-    });
+    await this._sync();
   }
 
-  public add(name: string, cb: Callback): void {
+  public async add(name: string): Promise<void> {
+    if (typeof this.data === 'undefined') {
+      throw Error('no data secret available');
+    }
+
     if (this.data.list.indexOf(name) === -1) {
       this.data.list.push(name);
-
       debug('the private package %o has been added', name);
-      cb(this._sync());
+      await this._sync();
     } else {
       debug('the private package %o was not added', name);
-      cb(null);
+      throw Error('package not added');
     }
   }
 
@@ -119,7 +132,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
                         const packagePath = Path.resolve(base, storage, file, file2);
 
                         fs.stat(packagePath, (err, stats) => {
-                          if (_.isNil(err) === false) {
+                          if (err) {
                             return cb(err);
                           }
                           const item = {
@@ -166,49 +179,44 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     );
   }
 
-  public remove(name: string, cb: Callback): void {
-    this.get((err, data) => {
-      if (err) {
-        cb(getInternalError('error remove private package'));
-        this.logger.error(
-          { err },
-          '[local-storage/remove]: remove the private package has failed @{err}'
-        );
-        debug('error on remove package %o', name);
+  public async remove(name: string): Promise<void> {
+    try {
+      if (typeof this.data === 'undefined') {
+        throw Error('no data secret available');
       }
+
+      const data = await this.get();
 
       const pkgName = data.indexOf(name);
       if (pkgName !== -1) {
         this.data.list.splice(pkgName, 1);
-
         debug('remove package %o has been removed', name);
       }
-
-      cb(this._sync());
-    });
+      await this._sync();
+    } catch (err) {
+      this.logger.error({ err }, 'remove the private package has failed @{err}');
+      throw getInternalError('error remove private package');
+    }
   }
 
-  /**
-   * Return all database elements.
-   * @return {Array}
-   */
-  public get(cb: Callback): void {
-    const list = this.data.list;
-    const totalItems = this.data.list.length;
+  public async get(): Promise<any> {
+    if (typeof this.data === 'undefined') {
+      throw Error('no data secret available');
+    }
 
-    cb(null, list);
-
+    const { list } = this.data;
+    const totalItems = list?.length;
     debug('get full list of packages (%o) has been fetched', totalItems);
+    return Promise.resolve(list);
   }
 
   public getPackageStorage(packageName: string): IPackageStorage {
-    const packageAccess = this.config.getMatchedPackagesSpec(packageName);
+    const packageAccess = getMatchedPackagesSpec(packageName, this.config.packages);
 
     const packagePath: string = this._getLocalStoragePath(
       packageAccess ? packageAccess.storage : undefined
     );
     debug('storage path selected: ', packagePath);
-
     if (_.isString(packagePath) === false) {
       debug('the package %o has no storage defined ', packageName);
       return;
@@ -224,8 +232,8 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     return new LocalDriver(packageStoragePath, this.logger);
   }
 
-  public clean(): void {
-    this._sync();
+  public async clean(): Promise<void> {
+    await this._sync();
   }
 
   private getTime(time: number, mtime: Date): number | Date {
@@ -256,28 +264,18 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     return storages;
   }
 
-  /**
-   * Syncronize {create} database whether does not exist.
-   * @return {Error|*}
-   */
-  private _sync(): Error | null {
+  private async _sync(): Promise<Error | null> {
     debug('sync database started');
 
     if (this.locked) {
-      this.logger.error(
-        'Database is locked, please check error message printed during startup to ' +
-          'prevent data loss.'
-      );
-      return new Error(
-        'Verdaccio database is locked, please contact your administrator to checkout ' +
-          'logs during verdaccio startup.'
-      );
+      this.logger.error(ERROR_DB_LOCKED);
+      return new Error(ERROR_DB_LOCKED);
     }
     // Uses sync to prevent ugly race condition
     try {
       const folderName = Path.dirname(this.path);
       debug('creating folder %o', folderName);
-      fs.mkdirSync(folderName, { recursive: true });
+      await mkdirPromise(folderName, { recursive: true });
       debug('sync folder %o created succeed', folderName);
     } catch (err) {
       debug('sync create folder has failed with error: %o', err);
@@ -285,7 +283,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     }
 
     try {
-      fs.writeFileSync(this.path, JSON.stringify(this.data));
+      await writeFilePromise(this.path, JSON.stringify(this.data));
       debug('sync write succeed');
 
       return null;
@@ -296,18 +294,12 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     }
   }
 
-  /**
-   * Verify the right local storage location.
-   * @param {String} path
-   * @return {String}
-   * @private
-   */
   private _getLocalStoragePath(storage: string | void): string {
     const globalConfigStorage = this.config ? this.config.storage : undefined;
     if (_.isNil(globalConfigStorage)) {
-      throw new Error('global storage is required for this plugin');
+      throw new Error('property storage in config.yaml is required for using  this plugin');
     } else {
-      if (_.isNil(storage) === false && _.isString(storage)) {
+      if (typeof storage === 'string') {
         return Path.join(globalConfigStorage as string, storage as string);
       }
 
@@ -315,15 +307,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     }
   }
 
-  /**
-   * Fetch local packages.
-   * @private
-   * @return {Object}
-   */
   private async _fetchLocalPackages(): Promise<LocalStorage> {
-    const list: StorageList = [];
-    const emptyDatabase = { list, secret: '' };
-
     try {
       return await loadPrivatePackages(this.path, this.logger);
     } catch (err) {
@@ -338,7 +322,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
         );
       }
 
-      return emptyDatabase;
+      return { list: [], secret: '' };
     }
   }
 }

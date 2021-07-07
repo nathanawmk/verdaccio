@@ -1,9 +1,9 @@
 import path from 'path';
-import * as readFile from '../src/read-file';
+import * as readFile from '../src/fs';
 
 import { findPackages, _dbGenPath } from '../src/utils';
 import { loadPrivatePackages } from '../src/pkg-utils';
-import { noSuchFile } from '../src/local-fs';
+import { noSuchFile } from '../src/legacy/local-fs';
 
 // FIXME: remove this mocks imports
 // eslint-disable-next-line jest/no-mocks-import

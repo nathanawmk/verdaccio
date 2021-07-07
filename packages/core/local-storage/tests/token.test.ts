@@ -2,7 +2,7 @@
 import fs from 'fs';
 import { ILocalData, PluginOptions, Token } from '@verdaccio/types';
 
-import LocalDatabase from '../src/local-database';
+import LocalDatabase from '../src/legacy/local-database';
 import * as pkgUtils from '../src/pkg-utils';
 
 // FIXME: remove this mocks imports
