@@ -1,7 +1,7 @@
 {
-  "name": "@verdaccio/local-storage",
-  "version": "11.0.0-6-next.6",
-  "description": "Local storage implementation",
+  "name": "@verdaccio/core",
+  "version": "6.0.0-next.0",
+  "description": "Stream extension for Verdaccio",
   "keywords": [
     "private",
     "package",
@@ -13,13 +13,19 @@
     "server",
     "verdaccio"
   ],
+  "main": "./build/index.js",
+  "types": "./build/index.d.ts",
   "author": "Juan Picado <juanpicado19@gmail.com>",
   "license": "MIT",
   "homepage": "https://verdaccio.org",
+  "engines": {
+    "node": ">=12",
+    "npm": ">=6"
+  },
   "repository": {
     "type": "https",
     "url": "https://github.com/verdaccio/verdaccio",
-    "directory": "packages/core/local-storage"
+    "directory": "packages/core/core"
   },
   "bugs": {
     "url": "https://github.com/verdaccio/verdaccio/issues"
@@ -27,31 +33,13 @@
   "publishConfig": {
     "access": "public"
   },
-  "main": "./build/index.js",
-  "types": "./build/index.d.ts",
-  "files": [
-    "build/"
-  ],
-  "engines": {
-    "node": ">=10",
-    "npm": ">=6"
-  },
   "dependencies": {
-    "@verdaccio/commons-api": "workspace:11.0.0-alpha.3",
-    "@verdaccio/file-locking": "workspace:11.0.0-alpha.3",
-    "@verdaccio/streams": "workspace:11.0.0-alpha.3",
-    "@verdaccio/utils": "workspace:6.0.0-6-next.5",
-    "@verdaccio/core": "workspace:6.0.0-next.0",
-    "async": "^3.2.0",
-    "debug": "^4.3.1",
-    "lodash": "^4.17.21",
-    "lowdb": "1.0.0"
+    "http-errors": "1.8.0",
+    "http-status-codes": "2.1.4"
   },
   "devDependencies": {
-    "@types/minimatch": "^3.0.3",
     "@verdaccio/types": "workspace:11.0.0-6-next.7",
-    "minimatch": "^3.0.4",
-    "rmdir-sync": "^1.0.1"
+    "typedoc": "next"
   },
   "scripts": {
     "clean": "rimraf ./build",
@@ -60,7 +48,8 @@
     "build:types": "tsc --emitDeclarationOnly -p tsconfig.build.json",
     "build:js": "babel src/ --out-dir build/ --copy-files --extensions \".ts,.tsx\" --source-maps",
     "watch": "pnpm build:js -- --watch",
-    "build": "pnpm run build:js && pnpm run build:types"
+    "build": "pnpm run build:js && pnpm run build:types",
+    "doc": "typedoc src/index.ts --tsconfig tsconfig.build.json"
   },
   "funding": {
     "type": "opencollective",

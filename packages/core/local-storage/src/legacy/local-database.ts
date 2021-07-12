@@ -13,7 +13,7 @@ import {
   Logger,
   StorageList,
 } from '@verdaccio/types';
-import { getInternalError } from '@verdaccio/commons-api';
+import { errorUtils, validatioUtils } from '@verdaccio/core';
 
 import { loadPrivatePackages } from '../pkg-utils';
 import TokenActions from '../token';
@@ -71,11 +71,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     }
   }
 
-  public search(
-    onPackage: Callback,
-    onEnd: Callback,
-    validateName: (name: string) => boolean
-  ): void {
+  public search(onPackage: Callback, onEnd: Callback): void {
     const storages = this._getCustomPackageLocalStorages();
     debug(`search custom local packages: %o`, JSON.stringify(storages));
     const base = Path.dirname(this.config.config_path);
@@ -115,7 +111,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
                   async.eachSeries(
                     files,
                     (file2, cb) => {
-                      if (validateName(file2)) {
+                      if (validatioUtils.validateName(file2)) {
                         const packagePath = Path.resolve(base, storage, file, file2);
 
                         fs.stat(packagePath, (err, stats) => {
@@ -136,7 +132,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
                     cb
                   );
                 });
-              } else if (validateName(file)) {
+              } else if (validatioUtils.validateName(file)) {
                 const base2 = Path.join(position !== 0 ? storageKeys[0] : '');
                 const packagePath = Path.resolve(base, base2, storage, file);
                 debug('search file location: %o', packagePath);
@@ -169,7 +165,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
   public remove(name: string, cb: Callback): void {
     this.get((err, data) => {
       if (err) {
-        cb(getInternalError('error remove private package'));
+        cb(errorUtils.getInternalError('error remove private package'));
         this.logger.error(
           { err },
           '[local-storage/remove]: remove the private package has failed @{err}'

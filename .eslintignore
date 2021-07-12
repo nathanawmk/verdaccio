@@ -10,3 +10,5 @@ static/
 website/
 wiki/
 dist/
+docs/
+test/functional/store/*

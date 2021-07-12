@@ -63,7 +63,7 @@ export interface IBasicStorage<T> extends StoragePackageActions {
   addPackage(name: string, info: Package, callback: Callback): void;
   updateVersions(name: string, packageInfo: Package, callback: Callback): void;
   getPackageMetadata(name: string, callback: Callback): void;
-  search(startKey: string, options: any): IReadTarball;
+  search(startKey: string): any;
   getSecret(config: T & Config): Promise<any>;
 }
 
@@ -94,6 +94,7 @@ export interface IStorageHandler extends IStorageManager<Config>, ITokenActions 
   _updateVersionsHiddenUpLink(versions: Versions, upLink: IProxy): void;
 }
 
+const experimental = process.env.__VERDACCIO_REFACTOR ?? false;
 class Storage {
   public localStorage: IStorage;
   public config: Config;
@@ -428,6 +429,76 @@ class Storage {
     });
   }
 
+  public async search(startkey: string, options: any): Promise<IReadTarball> {
+    if (experimental) {
+      debug('experimental search enabled');
+      return await this.streamSearch(startkey, options);
+    } else {
+      return this.legacySearch(startkey, options);
+    }
+  }
+
+  private searchInstance(upStream: any, searchStream, options: any): Promise<void> {
+    /**
+     * Notas
+     * - Debo buscar una manera de ejecutar los streams en paralelo
+     * - Incluido el local stream
+     *   - El local stream no esta filtrando por key y regresa todos los archivos
+     * */
+    return new Promise((resolve): void => {
+      // search by keyword for each uplink
+      const searchUpstream: IUploadTarball = upStream.search(options);
+      searchUpstream.pipe(searchStream, { end: false });
+      searchUpstream.on('error', (err): void => {
+        this.logger.error({ err }, 'search uplink error: @{err?.message}');
+        // if uplink fails we report it, but we continue to search
+        upStream.emit('error', err);
+      });
+      searchUpstream.on('end', (): void => {
+        resolve();
+      });
+
+      searchStream.abort = (): void => {
+        if ('abort' in searchUpstream) {
+          searchUpstream.abort();
+        }
+        // if search stream is aborted we abort upstream too
+        resolve();
+      };
+    });
+  }
+
+  /**
+   * Peform search on all local storage
+   * @param {string} startkey
+   * @param {stream} streamSearch
+   */
+  private searchLocalStorage(searchStream: IReadTarball, startkey: string): void {
+    const localSearchStream: IReadTarball = self.localStorage.streamSearch(startkey);
+    searchStream.abort = function (): void {
+      localSearchStream.abort();
+    };
+    localSearchStream.pipe(searchStream, { end: true });
+    localSearchStream.on('error', (err: VerdaccioError): void => {
+      this.logger.error({ err: err }, 'search error: @{err?.message}');
+      searchStream.end();
+    });
+  }
+
+  private async streamSearch(startkey: string, options: any): Promise<any> {
+    const stream: any = new Stream.PassThrough({ objectMode: true });
+    const uplinksList = Object.keys(this.uplinks);
+    const streams = uplinksList.map((uplinkId) => {
+      const uplink = this.uplinks[uplinkId].search;
+      return this.searchInstance(uplink, stream, options);
+    });
+    const localStream = this.searchLocalStorage(stream, startkey);
+
+    await Promise.all([...streams, localStream]);
+
+    return stream;
+  }
+
   /**
    Retrieve remote and local packages more recent than {startkey}
    Function streams all packages from all uplinks first, and then
@@ -436,14 +507,15 @@ class Storage {
    they appear in JSON last. That's a trade-off we make to avoid
    memory issues.
    Used storages: local && uplink (proxy_access)
+   * @deprecated
    * @param {*} startkey
    * @param {*} options
    * @return {Stream}
    */
-  public search(startkey: string, options: any): IReadTarball {
+  private legacySearch(startkey: string, options: any): IReadTarball {
     const self = this;
     // stream to write a tarball
-    const stream: any = new Stream.PassThrough({ objectMode: true });
+    const streamTunnel: any = new Stream.PassThrough({ objectMode: true });
 
     async.eachSeries(
       Object.keys(this.uplinks),
@@ -455,7 +527,7 @@ class Storage {
         // search by keyword for each uplink
         const lstream: IUploadTarball = self.uplinks[up_name].search(options);
         // join streams
-        lstream.pipe(stream, { end: false });
+        lstream.pipe(streamTunnel, { end: false });
         lstream.on('error', function (err): void {
           self.logger.error({ err: err }, 'uplink error: @{err?.message}');
           cb();
@@ -466,7 +538,7 @@ class Storage {
           cb = function (): void {};
         });
 
-        stream.abort = function (): void {
+        streamTunnel.abort = function (): void {
           if (lstream.abort) {
             lstream.abort();
           }
@@ -477,19 +549,19 @@ class Storage {
       // executed after all series
       function (): void {
         // attach a local search results
-        const lstream: IReadTarball = self.localStorage.search(startkey, options);
-        stream.abort = function (): void {
-          lstream.abort();
+        const localSearchStream: IReadTarball = self.localStorage.search(startkey);
+        streamTunnel.abort = function (): void {
+          localSearchStream.abort();
         };
-        lstream.pipe(stream, { end: true });
-        lstream.on('error', function (err: VerdaccioError): void {
+        localSearchStream.pipe(streamTunnel, { end: true });
+        localSearchStream.on('error', function (err: VerdaccioError): void {
           self.logger.error({ err: err }, 'search error: @{err?.message}');
-          stream.end();
+          streamTunnel.end();
         });
       }
     );
 
-    return stream;
+    return streamTunnel;
   }
 
   /**

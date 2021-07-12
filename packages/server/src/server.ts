@@ -154,6 +154,7 @@ export default (async function (configHash: ConfigRuntime): Promise<any> {
     plugin_params,
     (plugin: IPluginStorageFilter<IConfig>) => plugin.filter_metadata
   );
+  // @ts-ignore
   const storage: IStorageHandler = new Storage(config);
   try {
     // waits until init calls have been initialized

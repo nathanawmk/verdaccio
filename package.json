@@ -121,7 +121,7 @@
     "supertest": "4.0.2",
     "ts-node": "^9.1.1",
     "typescript": "^4.2.4",
-    "update-ts-references": "2.3.0",
+    "update-ts-references": "2.4.0",
     "verdaccio": "5.1.0",
     "verdaccio-audit": "workspace:*",
     "verdaccio-auth-memory": "workspace:*",

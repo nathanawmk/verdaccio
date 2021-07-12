@@ -11,8 +11,9 @@ import {
   IPluginStorage,
   LocalStorage,
   Logger,
+  StreamLocalData,
 } from '@verdaccio/types';
-import { getInternalError } from '@verdaccio/commons-api';
+import { errorUtils, validatioUtils, searchUtils } from '@verdaccio/core';
 import { getMatchedPackagesSpec } from '@verdaccio/utils';
 
 import LocalDriver, { noSuchFile } from './package-cache';
@@ -28,7 +29,7 @@ const debug = buildDebug('verdaccio:plugin:local-storage');
 export const ERROR_DB_LOCKED =
   'Database is locked, please check error message printed during startup to prevent data loss';
 
-class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
+class LocalDatabase extends TokenActions implements IPluginStorage<{}>, StreamLocalData {
   public path: string;
   public logger: Logger;
   public data: LocalStorage | void;
@@ -84,11 +85,12 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     }
   }
 
-  public search(
-    onPackage: Callback,
-    onEnd: Callback,
-    validateName: (name: string) => boolean
-  ): void {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  public search(_onPackage: Callback, _onEnd: Callback): void {
+    // FUTURE: remove when legacy class is gone, not need it here
+  }
+
+  public streamSearch(emitter: searchUtils.SearchEmitter): void {
     const storages = this._getCustomPackageLocalStorages();
     debug(`search custom local packages: %o`, JSON.stringify(storages));
     const base = Path.dirname(this.config.config_path);
@@ -128,7 +130,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
                   async.eachSeries(
                     files,
                     (file2, cb) => {
-                      if (validateName(file2)) {
+                      if (validatioUtils.validateName(file2)) {
                         const packagePath = Path.resolve(base, storage, file, file2);
 
                         fs.stat(packagePath, (err, stats) => {
@@ -140,7 +142,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
                             path: packagePath,
                             time: stats.mtime.getTime(),
                           };
-                          onPackage(item, cb);
+                          emitter.addPackage([item, cb]);
                         });
                       } else {
                         cb();
@@ -149,7 +151,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
                     cb
                   );
                 });
-              } else if (validateName(file)) {
+              } else if (validatioUtils.validateName(file)) {
                 const base2 = Path.join(position !== 0 ? storageKeys[0] : '');
                 const packagePath = Path.resolve(base, base2, storage, file);
                 debug('search file location: %o', packagePath);
@@ -157,14 +159,14 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
                   if (_.isNil(err) === false) {
                     return cb(err);
                   }
-                  onPackage(
+                  emitter.addPackage([
                     {
                       name: file,
                       path: packagePath,
                       time: self.getTime(stats.mtime.getTime(), stats.mtime),
                     },
-                    cb
-                  );
+                    cb,
+                  ]);
                 });
               } else {
                 cb();
@@ -174,8 +176,9 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
           );
         });
       },
-      // @ts-ignore
-      onEnd
+      () => {
+        emitter.end();
+      }
     );
   }
 
@@ -195,7 +198,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
       await this._sync();
     } catch (err) {
       this.logger.error({ err }, 'remove the private package has failed @{err}');
-      throw getInternalError('error remove private package');
+      throw errorUtils.getInternalError('error remove private package');
     }
   }
 

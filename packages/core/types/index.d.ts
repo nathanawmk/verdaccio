@@ -1,7 +1,7 @@
 /// <reference types="node" />
 
 import { PassThrough } from 'stream';
-
+import { EventEmitter } from 'events';
 declare module '@verdaccio/types' {
   type StringValue = string | void | null;
 
@@ -465,6 +465,9 @@ declare module '@verdaccio/types' {
   // but this type is on @verdaccio/commons-api and cannot be used here yet
   type onEndSearchPackage = (error?: any) => void;
   type onValidatePackage = (name: string) => boolean;
+  interface StreamLocalData {
+    streamSearch(emitter: EventEmitter): void;
+  }
 
   interface ILocalData<T> extends IPlugin<T>, ITokenActions {
     logger: Logger;
@@ -476,11 +479,7 @@ declare module '@verdaccio/types' {
     getSecret(): Promise<string>;
     setSecret(secret: string): Promise<any>;
     getPackageStorage(packageInfo: string): IPackageStorage;
-    search(
-      onPackage: onSearchPackage,
-      onEnd: onEndSearchPackage,
-      validateName: onValidatePackage
-    ): void;
+    search(onPackage: onSearchPackage, onEnd: onEndSearchPackage): void;
   }
 
   type StorageUpdateCallback = (data: Package, cb: CallbackAction) => void;
@@ -532,7 +531,7 @@ declare module '@verdaccio/types' {
     init(config: T & Config, filters: any): Promise<any>;
     addPackage(name: string, metadata: any, callback: Callback): Promise<any>;
     getPackage(options: any): void;
-    search(startkey: string, options: any): IReadTarball;
+    search(startkey: string, options: any): any;
     getLocalDatabase(callback: Callback): void;
   }
 

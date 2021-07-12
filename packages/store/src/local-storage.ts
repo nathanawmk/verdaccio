@@ -4,6 +4,7 @@ import _ from 'lodash';
 import buildDebug from 'debug';
 
 import { ErrorCode, isObject, getLatestVersion, validateName } from '@verdaccio/utils';
+import { searchUtils } from '@verdaccio/core';
 import { API_ERROR, DIST_TAGS, HTTP_STATUS, SUPPORT_ERRORS, USERS } from '@verdaccio/commons-api';
 import { createTarballHash } from '@verdaccio/utils';
 import { loadPlugin } from '@verdaccio/loaders';
@@ -680,12 +681,52 @@ class LocalStorage implements IStorage {
     this._readPackage(name, storage, callback);
   }
 
-  /**
-   * Search a local package.
-   * @param {*} startKey
-   * @param {*} options
-   * @return {Function}
-   */
+  public streamSearch(startKey: string): IReadTarball {
+    const stream = new ReadTarball({ objectMode: true });
+    // save wait whether plugin still do not support search functionality
+    debug('search on each package');
+    this.logger.info({ startKey }, 'search by @{startKey}');
+    if (_.isNil(this.storagePlugin.search)) {
+      this.logger.info('plugin search not implemented yet');
+      stream.end();
+      return stream;
+    } else {
+      const emitter = new searchUtils.SearchEmitter();
+
+      emitter.on('package', (searchItem: searchUtils.onPackageSearchItem) => {
+        // FIXME: temporary solution while plugin uses async module
+        const [item, cb] = searchItem;
+        if (item.time > parseInt(startKey, 10)) {
+          this.getPackageMetadata(item.name, (err: VerdaccioError, pkg: Package): void => {
+            if (err) {
+              return cb(err);
+            }
+
+            const time = new Date(item.time).toISOString();
+            const result = prepareSearchPackage(pkg, time);
+            if (_.isNil(result) === false) {
+              stream.push(result);
+            }
+            cb(null);
+          });
+        } else {
+          cb(null);
+        }
+      });
+
+      emitter.once('end', () => {
+        stream.end();
+      });
+
+      debug('search on each package by plugin');
+      // FIXME: temporary solution while plugin uses async module
+      // @ts-ignore
+      this.storagePlugin.streamSearch(emitter);
+
+      return stream;
+    }
+  }
+
   public search(startKey: string): IReadTarball {
     const stream = new ReadTarball({ objectMode: true });
     debug('search by %o', startKey);
@@ -723,6 +764,23 @@ class LocalStorage implements IStorage {
   }
 
   /**
+   * Walks through each package and calls `on_package` on them.
+   * @param {*} onPackage
+   * @param {*} onEnd
+   */
+  private _searchEachPackage(onPackage: onSearchPackage, onEnd: onEndSearchPackage): void {
+    // save wait whether plugin still do not support search functionality
+    debug('search on each package');
+    if (_.isNil(this.storagePlugin.search)) {
+      this.logger.warn('plugin search not implemented yet');
+      onEnd();
+    } else {
+      debug('search on each package by plugin');
+      this.storagePlugin.search(onPackage, onEnd);
+    }
+  }
+
+  /**
    * Retrieve a wrapper that provide access to the package location.
    * @param {Object} pkgName package name.
    * @return {Object}
@@ -748,23 +806,6 @@ class LocalStorage implements IStorage {
 
       callback(err, normalizePackage(result));
     });
-  }
-
-  /**
-   * Walks through each package and calls `on_package` on them.
-   * @param {*} onPackage
-   * @param {*} onEnd
-   */
-  private _searchEachPackage(onPackage: onSearchPackage, onEnd: onEndSearchPackage): void {
-    // save wait whether plugin still do not support search functionality
-    debug('search on each package');
-    if (_.isNil(this.storagePlugin.search)) {
-      this.logger.warn('plugin search not implemented yet');
-      onEnd();
-    } else {
-      debug('search on each package by plugin');
-      this.storagePlugin.search(onPackage, onEnd, validateName);
-    }
   }
 
   /**

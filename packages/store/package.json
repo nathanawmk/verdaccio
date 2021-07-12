@@ -41,6 +41,7 @@
   "dependencies": {
     "@verdaccio/commons-api": "workspace:11.0.0-alpha.3",
     "@verdaccio/config": "workspace:6.0.0-6-next.7",
+    "@verdaccio/core": "workspace:6.0.0-next.0",
     "@verdaccio/loaders": "workspace:6.0.0-6-next.4",
     "@verdaccio/local-storage": "workspace:11.0.0-6-next.6",
     "@verdaccio/logger": "workspace:6.0.0-6-next.4",

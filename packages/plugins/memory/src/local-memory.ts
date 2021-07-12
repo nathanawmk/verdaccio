@@ -63,7 +63,7 @@ class LocalMemory implements IPluginStorage<ConfigMemory> {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  public search(onPackage: Callback, onEnd: Callback, validateName: Function): void {
+  public search(onPackage: Callback, onEnd: Callback): void {
     this.logger.warn('[verdaccio/memory]: search method not implemented, PR is welcome');
     onEnd();
   }
