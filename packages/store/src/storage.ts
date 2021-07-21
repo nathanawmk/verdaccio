@@ -2,6 +2,7 @@ import assert from 'assert';
 import Stream from 'stream';
 import async, { AsyncResultArrayCallback } from 'async';
 import _ from 'lodash';
+import merge2 from 'merge2';
 import { Request } from 'express';
 import buildDebug from 'debug';
 
@@ -105,7 +106,7 @@ class Storage {
   public constructor(config: Config) {
     this.config = config;
     this.uplinks = setupUpLinks(config);
-    debug('uplinks available %o', this.uplinks);
+    debug('uplinks available %o', Object.keys(this.uplinks));
     this.logger = logger.child({ module: 'storage' });
     this.filters = [];
     // @ts-ignore
@@ -429,44 +430,28 @@ class Storage {
     });
   }
 
-  public async search(startkey: string, options: any): Promise<IReadTarball> {
+  public search(startkey: string, options: any): Promise<IReadTarball> {
     if (experimental) {
       debug('experimental search enabled');
-      return await this.streamSearch(startkey, options);
+      return this.streamSearch(startkey, options);
     } else {
+      // @ts-ignore
       return this.legacySearch(startkey, options);
     }
   }
 
-  private searchInstance(upStream: any, searchStream, options: any): Promise<void> {
-    /**
-     * Notas
-     * - Debo buscar una manera de ejecutar los streams en paralelo
-     * - Incluido el local stream
-     *   - El local stream no esta filtrando por key y regresa todos los archivos
-     * */
-    return new Promise((resolve): void => {
-      // search by keyword for each uplink
-      const searchUpstream: IUploadTarball = upStream.search(options);
-      searchUpstream.pipe(searchStream, { end: false });
-      searchUpstream.on('error', (err): void => {
-        this.logger.error({ err }, 'search uplink error: @{err?.message}');
-        // if uplink fails we report it, but we continue to search
-        upStream.emit('error', err);
-      });
-      searchUpstream.on('end', (): void => {
-        resolve();
-      });
-
-      searchStream.abort = (): void => {
-        if ('abort' in searchUpstream) {
-          searchUpstream.abort();
-        }
-        // if search stream is aborted we abort upstream too
-        resolve();
-      };
-    });
-  }
+  // private searchInstance(upStream: any, options: any): Stream.PassThrough {
+  //   const searchUpstream: IUploadTarball = upStream.search(options);
+  //   // searchUpstream.on('error', (err): void => {
+  //   //   this.logger.error({ err }, 'search uplink error: @{err?.message}');
+  //   //   // if uplink fails we report it, but we continue to search
+  //   //   upStream.emit('error', err);
+  //   // });
+  //   // searchUpstream.on('end', (): void => {
+  //   //   debug('search remote end for %o', upStream.config.url);
+  //   // });
+  //   return searchUpstream;
+  // }
 
   /**
    * Peform search on all local storage
@@ -474,7 +459,8 @@ class Storage {
    * @param {stream} streamSearch
    */
   private searchLocalStorage(searchStream: IReadTarball, startkey: string): void {
-    const localSearchStream: IReadTarball = self.localStorage.streamSearch(startkey);
+    // @ts-ignore
+    const localSearchStream: IReadTarball = this.localStorage.streamSearch(startkey);
     searchStream.abort = function (): void {
       localSearchStream.abort();
     };
@@ -485,18 +471,28 @@ class Storage {
     });
   }
 
-  private async streamSearch(startkey: string, options: any): Promise<any> {
-    const stream: any = new Stream.PassThrough({ objectMode: true });
+  private streamSearch(startkey: string, options: any): any {
+    const streamMerged = merge2();
+    const searchPassThrough: any = new Stream.PassThrough({ objectMode: true });
     const uplinksList = Object.keys(this.uplinks);
-    const streams = uplinksList.map((uplinkId) => {
-      const uplink = this.uplinks[uplinkId].search;
-      return this.searchInstance(uplink, stream, options);
+    uplinksList.map((uplinkId) => {
+      const uplink = this.uplinks[uplinkId];
+      if (!uplink) {
+        // this should never tecnically happens
+        this.logger.error({ uplinkId }, 'uplink @upLinkId not found');
+        throw new Error(`uplink ${uplinkId} not found`);
+      }
+      const uplinkSearchStream = uplink.search(options);
+      uplinkSearchStream.on('readable', function () {
+        // There is some data to read now.
+        console.log('-=*************************');
+      });
+      streamMerged.add(uplinkSearchStream);
     });
-    const localStream = this.searchLocalStorage(stream, startkey);
 
-    await Promise.all([...streams, localStream]);
+    // const localStream = this.searchLocalStorage(stream, startkey);
 
-    return stream;
+    return streamMerged;
   }
 
   /**

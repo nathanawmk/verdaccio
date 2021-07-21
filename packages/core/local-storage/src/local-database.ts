@@ -1,7 +1,7 @@
 import fs from 'fs';
 import Path from 'path';
+import { mkdir } from 'fs/promises';
 import buildDebug from 'debug';
-
 import _ from 'lodash';
 import async from 'async';
 import {
@@ -16,15 +16,15 @@ import {
 import { errorUtils, validatioUtils, searchUtils } from '@verdaccio/core';
 import { getMatchedPackagesSpec } from '@verdaccio/utils';
 
-import LocalDriver, { noSuchFile } from './package-cache';
+import LocalDriver, { noSuchFile } from './local-fs';
 import { loadPrivatePackages } from './pkg-utils';
 import TokenActions from './token';
 import { _dbGenPath } from './utils';
-import { mkdirPromise, writeFilePromise } from './fs';
+import { writeFilePromise } from './fs';
 
 const DB_NAME = '.verdaccio-db.json';
 
-const debug = buildDebug('verdaccio:plugin:local-storage');
+const debug = buildDebug('verdaccio:plugin:local-storage:experimental');
 
 export const ERROR_DB_LOCKED =
   'Database is locked, please check error message printed during startup to prevent data loss';
@@ -278,10 +278,10 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}>, StreamLo
     try {
       const folderName = Path.dirname(this.path);
       debug('creating folder %o', folderName);
-      await mkdirPromise(folderName, { recursive: true });
-      debug('sync folder %o created succeed', folderName);
+      await mkdir(folderName, { recursive: true });
+      debug('creating folder %o created succeed', folderName);
     } catch (err) {
-      debug('sync create folder has failed with error: %o', err);
+      this.logger.error({ err }, 'sync create folder has failed with error: @{err}');
       return null;
     }
 
@@ -291,8 +291,8 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}>, StreamLo
 
       return null;
     } catch (err) {
-      debug('sync failed %o', err);
-
+      console.error('er-->', err);
+      this.logger.error({ err }, 'sync database file failed: @{err}');
       return err;
     }
   }
@@ -300,6 +300,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}>, StreamLo
   private _getLocalStoragePath(storage: string | void): string {
     const globalConfigStorage = this.config ? this.config.storage : undefined;
     if (_.isNil(globalConfigStorage)) {
+      this.logger.error('property storage in config.yaml is required for using  this plugin');
       throw new Error('property storage in config.yaml is required for using  this plugin');
     } else {
       if (typeof storage === 'string') {

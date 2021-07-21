@@ -1,0 +1,43 @@
+export declare const DEFAULT_MIN_LIMIT_PASSWORD = 3;
+export declare const TIME_EXPIRATION_24H = '24h';
+export declare const TIME_EXPIRATION_7D = '7d';
+export declare const DIST_TAGS = 'dist-tags';
+export declare const LATEST = 'latest';
+export declare const USERS = 'users';
+export declare const DEFAULT_USER = 'Anonymous';
+export declare const HEADER_TYPE: {
+  CONTENT_ENCODING: string;
+  CONTENT_TYPE: string;
+  CONTENT_LENGTH: string;
+  ACCEPT_ENCODING: string;
+};
+export declare const CHARACTER_ENCODING: {
+  UTF8: string;
+};
+export declare const TOKEN_BASIC = 'Basic';
+export declare const TOKEN_BEARER = 'Bearer';
+export declare const HEADERS: {
+  ACCEPT: string;
+  ACCEPT_ENCODING: string;
+  USER_AGENT: string;
+  JSON: string;
+  CONTENT_TYPE: string;
+  CONTENT_LENGTH: string;
+  TEXT_PLAIN: string;
+  TEXT_PLAIN_UTF8: string;
+  TEXT_HTML_UTF8: string;
+  TEXT_HTML: string;
+  AUTHORIZATION: string;
+  FORWARDED_PROTO: string;
+  FORWARDED_FOR: string;
+  FRAMES_OPTIONS: string;
+  CSP: string;
+  CTO: string;
+  XSS: string;
+  ETAG: string;
+  JSON_CHARSET: string;
+  OCTET_STREAM: string;
+  TEXT_CHARSET: string;
+  WWW_AUTH: string;
+  GZIP: string;
+};

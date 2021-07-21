@@ -1,5 +1,6 @@
 import _ from 'lodash';
 import express, { Application } from 'express';
+import buildDebug from 'debug';
 import compression from 'compression';
 import cors from 'cors';
 import RateLimit from 'express-rate-limit';
@@ -34,6 +35,8 @@ import hookDebug from './debug';
 interface IPluginMiddleware<T> extends IPlugin<T> {
   register_middlewares(app: any, auth: IBasicAuth<T>, storage: IStorageManager<T>): void;
 }
+
+const debug = buildDebug('verdaccio:server');
 
 const defineAPI = function (config: IConfig, storage: IStorageHandler): any {
   const auth: IAuth = new Auth(config);
@@ -142,6 +145,7 @@ const defineAPI = function (config: IConfig, storage: IStorageHandler): any {
 };
 
 export default (async function (configHash: ConfigRuntime): Promise<any> {
+  debug('start server');
   const config: IConfig = new AppConfig(_.cloneDeep(configHash));
   // register middleware plugins
   const plugin_params = {
@@ -154,12 +158,16 @@ export default (async function (configHash: ConfigRuntime): Promise<any> {
     plugin_params,
     (plugin: IPluginStorageFilter<IConfig>) => plugin.filter_metadata
   );
+  debug('loaded filter plugin');
   // @ts-ignore
   const storage: IStorageHandler = new Storage(config);
   try {
     // waits until init calls have been initialized
+    debug('storage init start');
     await storage.init(config, filters);
+    debug('storage init end');
   } catch (err) {
+    console.log('--error storage init', err);
     logger.error({ error: err.msg }, 'storage has failed: @{error}');
     throw new Error(err);
   }

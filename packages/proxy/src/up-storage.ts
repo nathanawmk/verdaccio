@@ -2,6 +2,8 @@ import zlib from 'zlib';
 import Stream from 'stream';
 import URL from 'url';
 import JSONStream from 'JSONStream';
+import buildDebug from 'debug';
+import fetch from 'node-fetch';
 import _ from 'lodash';
 import request from 'request';
 import { isObject, ErrorCode, buildToken } from '@verdaccio/utils';
@@ -27,6 +29,8 @@ import {
 } from '@verdaccio/types';
 import { parseInterval } from './proxy-utils';
 const LoggerApi = require('@verdaccio/logger');
+
+const debug = buildDebug('verdaccio:proxy');
 
 const encode = function (thing): string {
   return encodeURIComponent(thing).replace(/^%40/, '@');
@@ -529,13 +533,16 @@ class ProxyStorage implements IProxy {
     return stream;
   }
 
-  /**
-   * Perform a stream search.
-   * @param {*} options request options
-   * @return {Stream}
-   */
-  public search(options: any): Stream.Readable {
-    const transformStream: any = new Stream.PassThrough({ objectMode: true });
+  public async search2(options: any): Stream.Readable {
+    debug('search url %o', options.req.url);
+    const options = {
+      method: options.req.method,
+      headers: {
+        referer: options.req.headers.referer,
+      },
+    };
+    const response = await fetch(options.req.url, options);
+    // const transformStream: any = new Stream.PassThrough({ objectMode: true });
     const requestStream: Stream.Readable = this.request({
       uri: options.req.url,
       req: options.req,
@@ -544,11 +551,68 @@ class ProxyStorage implements IProxy {
       },
     });
 
-    const parsePackage = (pkg: Package): void => {
-      if (isObject(pkg)) {
-        transformStream.emit('data', pkg);
-      }
-    };
+    // requestStream.on('response', (res): void => {
+    //   if (!String(res.statusCode).match(/^2\d\d$/)) {
+    //     return transformStream.emit(
+    //       'error',
+    //       ErrorCode.getInternalError(`bad status code ${res.statusCode} from uplink`)
+    //     );
+    //   }
+
+    //   // See https://github.com/request/request#requestoptions-callback
+    //   // Request library will not decode gzip stream.
+    //   let jsonStream;
+    //   if (res.headers[HEADER_TYPE.CONTENT_ENCODING] === HEADERS.GZIP) {
+    //     debug('gzip uplink');
+    //     jsonStream = res.pipe(zlib.createUnzip());
+    //   } else {
+    //     jsonStream = res;
+    //   }
+    //   jsonStream.pipe(JSONStream.parse('*')).on('data', (pkg: Package): void => {
+    //     debug('search on data %o | %o', this.url.host, typeof pkg);
+    //     // the response might have multiples items (lenght, date and search result)
+    //     if (isObject(pkg)) {
+    //       transformStream.emit('data', pkg);
+    //     }
+    //   });
+    //   jsonStream.on('end', (): void => {
+    //     debug('search end triggered');
+    //     transformStream.emit('end');
+    //   });
+    // });
+
+    // requestStream.on('error', (err: Error): void => {
+    //   debug('search on error %o', err);
+    //   transformStream.emit('error', err);
+    // });
+
+    // transformStream.abort = (): void => {
+    //   debug('search abort triggered');
+    //   // FIXME: this is clearly a potential issue
+    //   // there is no abort method on Stream.Readable
+    //   // @ts-ignore
+    //   requestStream.abort();
+    //   transformStream.emit('end');
+    // };
+
+    // return transformStream;
+  }
+
+  /**
+   * Perform a stream search.
+   * @param {*} options request options
+   * @return {Stream}
+   */
+  public search(options: any): Stream.Readable {
+    debug('search url %o', options.req.url);
+    const transformStream: any = new Stream.PassThrough({ objectMode: true });
+    const requestStream: Stream.Readable = this.request({
+      uri: options.req.url,
+      req: options.req,
+      headers: {
+        referer: options.req.headers.referer,
+      },
+    });
 
     requestStream.on('response', (res): void => {
       if (!String(res.statusCode).match(/^2\d\d$/)) {
@@ -562,21 +626,31 @@ class ProxyStorage implements IProxy {
       // Request library will not decode gzip stream.
       let jsonStream;
       if (res.headers[HEADER_TYPE.CONTENT_ENCODING] === HEADERS.GZIP) {
+        debug('gzip uplink');
         jsonStream = res.pipe(zlib.createUnzip());
       } else {
         jsonStream = res;
       }
-      jsonStream.pipe(JSONStream.parse('*')).on('data', parsePackage);
+      jsonStream.pipe(JSONStream.parse('*')).on('data', (pkg: Package): void => {
+        debug('search on data %o | %o', this.url.host, typeof pkg);
+        // the response might have multiples items (lenght, date and search result)
+        if (isObject(pkg)) {
+          transformStream.emit('data', pkg);
+        }
+      });
       jsonStream.on('end', (): void => {
+        debug('search end triggered');
         transformStream.emit('end');
       });
     });
 
     requestStream.on('error', (err: Error): void => {
+      debug('search on error %o', err);
       transformStream.emit('error', err);
     });
 
     transformStream.abort = (): void => {
+      debug('search abort triggered');
       // FIXME: this is clearly a potential issue
       // there is no abort method on Stream.Readable
       // @ts-ignore
