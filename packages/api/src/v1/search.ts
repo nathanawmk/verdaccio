@@ -198,6 +198,8 @@ class TransFormResults extends Transform {
 
 /**
  * Endpoint for npm search v1
+ * Empty value
+ *  - {"objects":[],"total":0,"time":"Sun Jul 25 2021 14:09:11 GMT+0000 (Coordinated Universal Time)"}
  * req: 'GET /-/v1/search?text=react&size=20&from=0&quality=0.65&popularity=0.98&maintenance=0.5'
  */
 export default function (route, auth, storage): void {
@@ -249,14 +251,19 @@ export default function (route, auth, storage): void {
       },
     });
     const transformResults = new TransFormResults(text, logger, { objectMode: true });
-    const searchStream = storage.search(0, { req });
-    console.log('--searchStream', searchStream);
+    const searchStream = storage.search(0, {
+      headers: req.headers,
+      query: req.query,
+      url: req.url,
+      remote_user: req.remote_user,
+    });
+    // console.log('--searchStream', searchStream);
     const outPutStream = new PassThrough({ objectMode: true });
     pipeline(searchStream, transformResults, transformToSearchPkg, outPutStream, (err) => {
       if (err) {
         next(getInternalError(err ? err.message : 'unknown error'));
       } else {
-        console.log('Pipeline succeeded.');
+        // console.log('Pipeline succeeded.');
       }
     });
 

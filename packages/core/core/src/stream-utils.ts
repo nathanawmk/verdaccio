@@ -72,6 +72,7 @@ function addAbstractMethods(self: any, name: any): void {
 
     self[name] = fn;
 
+    // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
     if (self._called_methods && self._called_methods[name]) {
       delete self._called_methods[name];
 
@@ -80,4 +81,15 @@ function addAbstractMethods(self: any, name: any): void {
   });
 }
 
-export { ReadTarball, UploadTarball };
+const readableToString = async (stream) => {
+  const chunks: Buffer[] = [];
+  for await (let chunk of stream) {
+    chunks.push(Buffer.from(chunk));
+  }
+
+  const buffer = Buffer.concat(chunks);
+  const str = buffer.toString('utf-8');
+  return str;
+};
+
+export { ReadTarball, UploadTarball, readableToString };
