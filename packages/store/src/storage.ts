@@ -5,8 +5,9 @@ import _ from 'lodash';
 import merge2 from 'merge2';
 import { Request } from 'express';
 import buildDebug from 'debug';
+import AbortController from 'node-abort-controller';
 
-import { ProxyStorage } from '@verdaccio/proxy';
+import { ProxySearchParams, ProxyStorage } from '@verdaccio/proxy';
 import { API_ERROR, HTTP_STATUS, DIST_TAGS } from '@verdaccio/commons-api';
 import { ReadTarball } from '@verdaccio/streams';
 import { ErrorCode, normalizeDistTags, validateMetadata, isObject } from '@verdaccio/utils';
@@ -471,7 +472,7 @@ class Storage {
     });
   }
 
-  private streamSearch(startkey: string, options: any): any {
+  private streamSearch(startkey: string, options: ProxySearchParams): any {
     const streamMerged = merge2();
     const searchPassThrough: any = new Stream.PassThrough({ objectMode: true });
     const uplinksList = Object.keys(this.uplinks);
@@ -482,7 +483,8 @@ class Storage {
         this.logger.error({ uplinkId }, 'uplink @upLinkId not found');
         throw new Error(`uplink ${uplinkId} not found`);
       }
-      const uplinkSearchStream = uplink.search(options);
+      const abort = new AbortController();
+      const uplinkSearchStream = await uplink.search({ ...options, abort });
       uplinkSearchStream.on('readable', function () {
         // There is some data to read now.
         console.log('-=*************************');

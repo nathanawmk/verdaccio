@@ -1,11 +1,15 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+/* global AbortController */
+
 import path from 'path';
-import * as httpMocks from 'node-mocks-http';
-import fs from 'fs';
+import semver from 'semver';
 import { Config, parseConfigFile } from '@verdaccio/config';
-import { ErrorCode } from '@verdaccio/utils';
-import { API_ERROR, HEADER_TYPE, HTTP_STATUS, VerdaccioError } from '@verdaccio/commons-api';
+import { streamUtils } from '@verdaccio/core';
 import { ProxyStorage, SearchQuery } from '../src/up-storage';
-import { errorUtils, streamUtils } from '@verdaccio/core';
+
+if (semver.lte(process.version, 'v15.0.0')) {
+  global.AbortController = require('abortcontroller-polyfill/dist/cjs-ponyfill').AbortController;
+}
 
 const getConf = (name) => path.join(__dirname, '/conf', name);
 
@@ -57,15 +61,18 @@ describe('proxy', () => {
     test('get response from v1 endpoint', async () => {
       const response = { body: { foo: 1 } };
       const mockAgent = new MockAgent({ connections: 1 });
+      mockAgent.disableNetConnect();
       setGlobalDispatcher(mockAgent);
       const mockClient = mockAgent.get(domain);
       mockClient.intercept(options).reply(200, response);
       const prox1 = new ProxyStorage(defaultRequestOptions, conf);
+      const abort = new AbortController();
       const stream = await prox1.search({
         headers: {
           referer: 'some.org',
         },
         query,
+        abort,
         url: `${domain}/-/v1/search`,
       });
 
@@ -74,9 +81,11 @@ describe('proxy', () => {
 
     test('handle bad response 409', async () => {
       const mockAgent = new MockAgent({ connections: 1 });
+      mockAgent.disableNetConnect();
       setGlobalDispatcher(mockAgent);
       const mockClient = mockAgent.get(domain);
       mockClient.intercept(options).reply(409, {});
+      const abort = new AbortController();
       const prox1 = new ProxyStorage(defaultRequestOptions, conf);
       await expect(
         prox1.search({
@@ -84,81 +93,55 @@ describe('proxy', () => {
             referer: 'some.org',
           },
           query,
+          abort,
           url: `${domain}/-/v1/search`,
         })
       ).rejects.toThrow('bad status code 409 from uplink');
     });
 
-    //   test('abort search from v1 endpoint', (done) => {
-    //     const url = '/-/v1/search';
-    //     nock(domain).get(url).delay(20000);
-    //     const prox1 = new ProxyStorage(defaultRequestOptions, conf);
-    //     const req = httpMocks.createRequest({
-    //       method: 'GET',
-    //       headers: {
-    //         referer: 'some.org',
-    //         ['x-forwarded-for']: '10.0.0.1',
-    //       },
-    //       connection: {
-    //         remoteAddress: 'localhost',
-    //       },
-    //       url,
-    //     });
-    //     const stream = prox1.search({ req });
-    //     stream.on('end', () => {
-    //       done();
-    //     });
-    //     // TODO: apply correct types here
-    //     // @ts-ignore
-    //     stream.abort();
-    //   });
+    test.skip('abort search from v1 endpoint', async () => {
+      // FIXME: abort not working, this migh require a real mocked http server
+      const mockAgent = new MockAgent({ connections: 1 });
+      setGlobalDispatcher(mockAgent);
+      const mockClient = mockAgent.get(domain);
+      mockClient.intercept(options).reply(200, {}).delay(1000);
+      const abort = new AbortController();
+      const prox1 = new ProxyStorage(defaultRequestOptions, conf);
+      abort.abort();
+      await expect(
+        prox1.search({
+          headers: {
+            referer: 'some.org',
+          },
+          query,
+          abort,
+          url: `${domain}/-/v1/search`,
+        })
+      ).rejects.toThrow('bad status code 409 from uplink');
+    });
 
-    //   // TODO: we should test the gzip deflate here, but is hard to test
-    //   // fix me if you can deal with Incorrect Header Check issue
-    //   test.todo('get file from v1 endpoint with gzip headers');
+    // TODO: we should test the gzip deflate here, but is hard to test
+    // fix me if you can deal with Incorrect Header Check issue
+    test.todo('get file from v1 endpoint with gzip headers');
 
-    //   test('search v1 endpoint fails', (done) => {
-    //     const url = '/-/v1/search';
-    //     nock(domain).get(url).replyWithError('search endpoint is down');
-    //     const prox1 = new ProxyStorage(defaultRequestOptions, conf);
-    //     const req = httpMocks.createRequest({
-    //       method: 'GET',
-    //       headers: {
-    //         referer: 'some.org',
-    //         ['x-forwarded-for']: '10.0.0.1',
-    //       },
-    //       connection: {
-    //         remoteAddress: 'localhost',
-    //       },
-    //       url,
-    //     });
-    //     const stream = prox1.search({ req });
-    //     stream.on('error', (error) => {
-    //       expect(error).toEqual(Error('search endpoint is down'));
-    //       done();
-    //     });
-    //   });
-
-    //   test('search v1 endpoint bad status code', (done) => {
-    //     const url = '/-/v1/search';
-    //     nock(domain).get(url).reply(409);
-    //     const prox1 = new ProxyStorage(defaultRequestOptions, conf);
-    //     const req = httpMocks.createRequest({
-    //       method: 'GET',
-    //       headers: {
-    //         referer: 'some.org',
-    //         ['x-forwarded-for']: '10.0.0.1',
-    //       },
-    //       connection: {
-    //         remoteAddress: 'localhost',
-    //       },
-    //       url,
-    //     });
-    //     const stream = prox1.search({ req });
-    //     stream.on('error', (error) => {
-    //       expect(error).toEqual(ErrorCode.getInternalError(`bad status code 409 from uplink`));
-    //       done();
-    //     });
-    //   });
+    test('search v1 endpoint fails', async () => {
+      const mockAgent = new MockAgent({ connections: 1 });
+      mockAgent.disableNetConnect();
+      setGlobalDispatcher(mockAgent);
+      const mockClient = mockAgent.get(domain);
+      mockClient.intercept(options).reply(500, {});
+      const abort = new AbortController();
+      const prox1 = new ProxyStorage(defaultRequestOptions, conf);
+      await expect(
+        prox1.search({
+          headers: {
+            referer: 'some.org',
+          },
+          query,
+          abort,
+          url: `${domain}/-/v1/search`,
+        })
+      ).rejects.toThrow('bad status code 500 from uplink');
+    });
   });
 });

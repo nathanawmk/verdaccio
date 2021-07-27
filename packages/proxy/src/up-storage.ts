@@ -1,8 +1,11 @@
+/* global AbortController */
+
 import Stream from 'stream';
 import { URL } from 'url';
 import queryString from 'query-string';
 import buildDebug from 'debug';
 import _ from 'lodash';
+import { Request } from 'undici-fetch';
 import request from 'request';
 import { buildToken } from '@verdaccio/utils';
 import { ReadTarball } from '@verdaccio/streams';
@@ -60,6 +63,7 @@ export type ProxySearchParams = {
   headers: Headers;
   url: string;
   query: SearchQuery;
+  abort: AbortController;
 };
 export interface IProxy {
   config: UpLinkConfLocal;
@@ -226,7 +230,7 @@ class ProxyStorage implements IProxy {
               }
             }
 
-            if (!err && isObject(body)) {
+            if (!err && validatioUtils.isObject(body)) {
               if (_.isString(body.error)) {
                 error = body.error;
               }
@@ -538,88 +542,25 @@ class ProxyStorage implements IProxy {
     return stream;
   }
 
-  // public async searchNoStream(options: any): Stream.Readable {
-  //   debug('search url %o', options.req.url);
-  //   const options = {
-  //     method: options.req.method,
-  //     headers: {
-  //       referer: options.req.headers.referer,
-  //     },
-  //   };
-  //   const response = await fetch(options.req.url, options);
-  //   // const transformStream: any = new Stream.PassThrough({ objectMode: true });
-  //   const requestStream: Stream.Readable = this.request({
-  //     uri: options.req.url,
-  //     req: options.req,
-  //     headers: {
-  //       referer: options.req.headers.referer,
-  //     },
-  //   });
-
-  //   // requestStream.on('response', (res): void => {
-  //   //   if (!String(res.statusCode).match(/^2\d\d$/)) {
-  //   //     return transformStream.emit(
-  //   //       'error',
-  //   //       ErrorCode.getInternalError(`bad status code ${res.statusCode} from uplink`)
-  //   //     );
-  //   //   }
-
-  //   //   // See https://github.com/request/request#requestoptions-callback
-  //   //   // Request library will not decode gzip stream.
-  //   //   let jsonStream;
-  //   //   if (res.headers[HEADER_TYPE.CONTENT_ENCODING] === HEADERS.GZIP) {
-  //   //     debug('gzip uplink');
-  //   //     jsonStream = res.pipe(zlib.createUnzip());
-  //   //   } else {
-  //   //     jsonStream = res;
-  //   //   }
-  //   //   jsonStream.pipe(JSONStream.parse('*')).on('data', (pkg: Package): void => {
-  //   //     debug('search on data %o | %o', this.url.host, typeof pkg);
-  //   //     // the response might have multiples items (lenght, date and search result)
-  //   //     if (isObject(pkg)) {
-  //   //       transformStream.emit('data', pkg);
-  //   //     }
-  //   //   });
-  //   //   jsonStream.on('end', (): void => {
-  //   //     debug('search end triggered');
-  //   //     transformStream.emit('end');
-  //   //   });
-  //   // });
-
-  //   // requestStream.on('error', (err: Error): void => {
-  //   //   debug('search on error %o', err);
-  //   //   transformStream.emit('error', err);
-  //   // });
-
-  //   // transformStream.abort = (): void => {
-  //   //   debug('search abort triggered');
-  //   //   // FIXME: this is clearly a potential issue
-  //   //   // there is no abort method on Stream.Readable
-  //   //   // @ts-ignore
-  //   //   requestStream.abort();
-  //   //   transformStream.emit('end');
-  //   // };
-
-  //   // return transformStream;
-  // }
-
   /**
    * Perform a stream search.
    * @param {*} options request options
    * @return {Stream}
    */
-  public async search({ url, headers, query }: ProxySearchParams): Promise<Stream.Readable> {
+  public async search({ url, headers, query, abort }: ProxySearchParams): Promise<Stream.Readable> {
     debug('search url %o', url);
 
     let response;
     try {
       const uri = `${url}?${queryString.stringify(query)}`;
       debug('uri %o', uri);
-      response = await fetch(uri, {
+      const request = new Request(uri, {
         method: 'GET',
         // FUTURE: whitelist domains what we are sending not need it headers, security check
         headers,
+        signal: abort.signal,
       });
+      response = await fetch(request);
       debug('response.status  %o', response.status);
 
       if (response.status >= HTTP_STATUS.BAD_REQUEST) {
@@ -631,61 +572,6 @@ class ProxyStorage implements IProxy {
       this.logger.error({ errorMessage: err?.message }, 'proxy search error: @{errorMessage}');
       throw err;
     }
-
-    // const transformStream: any = new Stream.PassThrough({ objectMode: true });
-    // const requestStream: Stream.Readable = this.request({
-    //   uri: options.req.url,
-    //   req: options.req,
-    //   headers: {
-    //     referer: options.req.headers.referer,
-    //   },
-    // });
-
-    // requestStream.on('response', (res): void => {
-    //   if (!String(res.statusCode).match(/^2\d\d$/)) {
-    //     return transformStream.emit(
-    //       'error',
-    //       ErrorCode.getInternalError(`bad status code ${res.statusCode} from uplink`)
-    //     );
-    //   }
-
-    //   // See https://github.com/request/request#requestoptions-callback
-    //   // Request library will not decode gzip stream.
-    //   let jsonStream;
-    //   if (res.headers[HEADER_TYPE.CONTENT_ENCODING] === HEADERS.GZIP) {
-    //     debug('gzip uplink');
-    //     jsonStream = res.pipe(zlib.createUnzip());
-    //   } else {
-    //     jsonStream = res;
-    //   }
-    //   jsonStream.pipe(JSONStream.parse('*')).on('data', (pkg: Package): void => {
-    //     debug('search on data %o | %o', this.url.host, typeof pkg);
-    //     // the response might have multiples items (lenght, date and search result)
-    //     if (isObject(pkg)) {
-    //       transformStream.emit('data', pkg);
-    //     }
-    //   });
-    //   jsonStream.on('end', (): void => {
-    //     debug('search end triggered');
-    //     transformStream.emit('end');
-    //   });
-    // });
-
-    // requestStream.on('error', (err: Error): void => {
-    //   debug('search on error %o', err);
-    //   transformStream.emit('error', err);
-    // });
-
-    // transformStream.abort = (): void => {
-    //   debug('search abort triggered');
-    //   // FIXME: this is clearly a potential issue
-    //   // there is no abort method on Stream.Readable
-    //   // @ts-ignore
-    //   requestStream.abort();
-    //   transformStream.emit('end');
-    // };
-
-    // return transformStream;
   }
 
   /**
@@ -784,7 +670,6 @@ class ProxyStorage implements IProxy {
       this.proxy = mainconfig[proxy_key];
     }
     if ('no_proxy' in config) {
-      // $FlowFixMe
       noProxyList = config.no_proxy;
     } else if ('no_proxy' in mainconfig) {
       noProxyList = mainconfig.no_proxy;
@@ -796,7 +681,6 @@ class ProxyStorage implements IProxy {
     }
 
     if (_.isString(noProxyList) && noProxyList.length) {
-      // $FlowFixMe
       noProxyList = noProxyList.split(',');
     }
 
