@@ -1,5 +1,6 @@
 import assert from 'assert';
 import UrlNode from 'url';
+import { PassThrough } from 'stream';
 import _ from 'lodash';
 import buildDebug from 'debug';
 
@@ -32,7 +33,7 @@ import {
   StorageUpdateCallback,
 } from '@verdaccio/types';
 import { VerdaccioError } from '@verdaccio/commons-api';
-import { IStorage } from './storage';
+import { IStorage } from './type';
 
 import {
   prepareSearchPackage,
@@ -681,8 +682,8 @@ class LocalStorage implements IStorage {
     this._readPackage(name, storage, callback);
   }
 
-  public streamSearch(startKey: string): IReadTarball {
-    const stream = new ReadTarball({ objectMode: true });
+  public streamSearch(startKey: string): PassThrough {
+    const stream = new PassThrough({ objectMode: true });
     // save wait whether plugin still do not support search functionality
     debug('search on each package');
     this.logger.info({ startKey }, 'search by @{startKey}');
@@ -727,6 +728,9 @@ class LocalStorage implements IStorage {
     }
   }
 
+  /**
+   * @deprecated
+   */
   public search(startKey: string): IReadTarball {
     const stream = new ReadTarball({ objectMode: true });
     debug('search by %o', startKey);
@@ -767,6 +771,7 @@ class LocalStorage implements IStorage {
    * Walks through each package and calls `on_package` on them.
    * @param {*} onPackage
    * @param {*} onEnd
+   * @deprecated
    */
   private _searchEachPackage(onPackage: onSearchPackage, onEnd: onEndSearchPackage): void {
     // save wait whether plugin still do not support search functionality

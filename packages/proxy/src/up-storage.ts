@@ -1,11 +1,13 @@
 /* global AbortController */
 
-import Stream from 'stream';
+import Stream, { PassThrough, pipeline, Readable } from 'stream';
+import zlib from 'zlib';
+import { promisify } from 'util';
 import { URL } from 'url';
-import queryString from 'query-string';
 import buildDebug from 'debug';
 import _ from 'lodash';
-import { Request } from 'undici-fetch';
+import { Request, Headers } from 'undici-fetch';
+import JSONStream from 'JSONStream';
 import request from 'request';
 import { buildToken } from '@verdaccio/utils';
 import { ReadTarball } from '@verdaccio/streams';
@@ -19,11 +21,13 @@ import {
 } from '@verdaccio/commons-api';
 import { Config, Callback, Logger, UpLinkConf, IReadTarball } from '@verdaccio/types';
 import { errorUtils, validatioUtils } from '@verdaccio/core';
+import { stream } from 'undici';
 import { parseInterval } from './proxy-utils';
 const LoggerApi = require('@verdaccio/logger');
 
 const fetch = require('undici-fetch');
 const debug = buildDebug('verdaccio:proxy');
+const pipelineAsync = promisify(pipeline);
 
 const encode = function (thing): string {
   return encodeURIComponent(thing).replace(/^%40/, '@');
@@ -47,7 +51,7 @@ export interface ProxyList {
   [key: string]: IProxy;
 }
 
-export type Headers = {
+export type Headersdd = {
   [key: string]: string;
 };
 
@@ -60,10 +64,9 @@ export type SearchQuery = {
 };
 
 export type ProxySearchParams = {
-  headers: Headers;
+  headers?: Headers;
   url: string;
-  query: SearchQuery;
-  abort: AbortController;
+  abort?: AbortController;
 };
 export interface IProxy {
   config: UpLinkConfLocal;
@@ -170,7 +173,6 @@ class ProxyStorage implements IProxy {
         }
         streamRead.emit('error', errorUtils.getInternalError(errorUtils.API_ERROR.UPLINK_OFFLINE));
       });
-      // $FlowFixMe
       streamRead._read = function (): void {};
       // preventing 'Uncaught, unspecified "error" event'
       streamRead.on('error', function (): void {});
@@ -547,18 +549,23 @@ class ProxyStorage implements IProxy {
    * @param {*} options request options
    * @return {Stream}
    */
-  public async search({ url, headers, query, abort }: ProxySearchParams): Promise<Stream.Readable> {
+  public async search({ url, abort }: ProxySearchParams): Promise<Stream.Readable> {
     debug('search url %o', url);
 
     let response;
     try {
-      const uri = `${url}?${queryString.stringify(query)}`;
-      debug('uri %o', uri);
+      const fullURL = new URL(`${this.url}${url}`);
+      // FIXME: a better way to remove duplicate slashes?
+      const uri = fullURL.href.replace(/([^:]\/)\/+/g, '$1');
+      this.logger.http({ uri, uplink: this.upname }, 'search request to uplink @{uplink} - @{uri}');
       const request = new Request(uri, {
         method: 'GET',
         // FUTURE: whitelist domains what we are sending not need it headers, security check
-        headers,
-        signal: abort.signal,
+        // headers: new Headers({
+        //   ...headers,
+        //   connection: 'keep-alive',
+        // }),
+        signal: abort?.signal,
       });
       response = await fetch(request);
       debug('response.status  %o', response.status);
@@ -567,7 +574,11 @@ class ProxyStorage implements IProxy {
         throw errorUtils.getInternalError(`bad status code ${response.status} from uplink`);
       }
 
-      return response.body;
+      const streamSearch = new PassThrough({ objectMode: true });
+      const streamResponse = Readable.from(await response.text());
+      // objects is one of the properties on the body, it ignores date and total
+      streamResponse.pipe(JSONStream.parse('objects')).pipe(streamSearch, { end: true });
+      return streamSearch;
     } catch (err) {
       this.logger.error({ errorMessage: err?.message }, 'proxy search error: @{errorMessage}');
       throw err;

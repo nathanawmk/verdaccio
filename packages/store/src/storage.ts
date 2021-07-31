@@ -1,13 +1,10 @@
 import assert from 'assert';
-import Stream from 'stream';
 import async, { AsyncResultArrayCallback } from 'async';
 import _ from 'lodash';
-import merge2 from 'merge2';
-import { Request } from 'express';
 import buildDebug from 'debug';
-import AbortController from 'node-abort-controller';
+import semver from 'semver';
 
-import { ProxySearchParams, ProxyStorage } from '@verdaccio/proxy';
+import { ProxyStorage } from '@verdaccio/proxy';
 import { API_ERROR, HTTP_STATUS, DIST_TAGS } from '@verdaccio/commons-api';
 import { ReadTarball } from '@verdaccio/streams';
 import { ErrorCode, normalizeDistTags, validateMetadata, isObject } from '@verdaccio/utils';
@@ -22,21 +19,15 @@ import {
   Version,
   DistFile,
   StringValue,
-  IPluginStorageFilter,
-  IPluginStorage,
   Callback,
   Logger,
-  StoragePackageActions,
   GenericBody,
   TokenFilter,
   Token,
-  IStorageManager,
-  ITokenActions,
 } from '@verdaccio/types';
 import { hasProxyTo } from '@verdaccio/config';
 import { logger } from '@verdaccio/logger';
-import { VerdaccioError } from '@verdaccio/commons-api';
-import { SearchInstance } from './search';
+import { SearchInstance, SearchManager } from './search';
 
 import { LocalStorage } from './local-storage';
 import { mergeVersions } from './metadata-utils';
@@ -49,59 +40,19 @@ import {
   mergeUplinkTimeIntoLocal,
   generatePackageTemplate,
 } from './storage-utils';
+import { IStorage, ISyncUplinks, IPluginFilters, IGetPackageOptions } from './type';
+
+if (semver.lte(process.version, 'v15.0.0')) {
+  global.AbortController = require('abortcontroller-polyfill/dist/cjs-ponyfill').AbortController;
+}
 
 const debug = buildDebug('verdaccio:storage');
-
-export interface IGetPackageOptions {
-  callback: Callback;
-  name: string;
-  keepUpLinkData: boolean;
-  uplinksLook: boolean;
-  req: any;
-}
-
-export interface IBasicStorage<T> extends StoragePackageActions {
-  init(): Promise<void>;
-  addPackage(name: string, info: Package, callback: Callback): void;
-  updateVersions(name: string, packageInfo: Package, callback: Callback): void;
-  getPackageMetadata(name: string, callback: Callback): void;
-  search(startKey: string): any;
-  getSecret(config: T & Config): Promise<any>;
-}
-
-export interface IStorage extends IBasicStorage<Config>, ITokenActions {
-  config: Config;
-  storagePlugin: IPluginStorage<Config> | null;
-  logger: Logger;
-}
-
-export interface ISyncUplinks {
-  uplinksLook?: boolean;
-  etag?: string;
-  req?: Request;
-}
-
-export type IPluginFilters = IPluginStorageFilter<Config>[];
-
-export interface IStorageHandler extends IStorageManager<Config>, ITokenActions {
-  config: Config;
-  localStorage: IStorage | null;
-  filters: IPluginFilters;
-  uplinks: ProxyList;
-  init(config: Config, filters: IPluginFilters): Promise<void>;
-  saveToken(token: Token): Promise<any>;
-  deleteToken(user: string, tokenKey: string): Promise<any>;
-  readTokens(filter: TokenFilter): Promise<Token[]>;
-  _syncUplinksMetadata(name: string, packageInfo: Package, options: any, callback: Callback): void;
-  _updateVersionsHiddenUpLink(versions: Versions, upLink: IProxy): void;
-}
-
-const experimental = process.env.__VERDACCIO_REFACTOR ?? false;
 class Storage {
   public localStorage: IStorage;
-  public config: Config;
-  public logger: Logger;
-  public uplinks: ProxyList;
+  public searchManager: SearchManager | null;
+  public readonly config: Config;
+  public readonly logger: Logger;
+  public readonly uplinks: ProxyList;
   public filters: IPluginFilters;
 
   public constructor(config: Config) {
@@ -112,6 +63,7 @@ class Storage {
     this.filters = [];
     // @ts-ignore
     this.localStorage = null;
+    this.searchManager = null;
   }
 
   public async init(config: Config, filters: IPluginFilters = []): Promise<void> {
@@ -123,6 +75,7 @@ class Storage {
       debug('local init storage initialized');
       await this.localStorage.getSecret(config);
       debug('local storage secret initialized');
+      this.searchManager = new SearchManager(this.uplinks, this.localStorage);
     } else {
       debug('storage has been already initialized');
     }
@@ -429,137 +382,6 @@ class Storage {
         }
       );
     });
-  }
-
-  public search(startkey: string, options: any): Promise<IReadTarball> {
-    if (experimental) {
-      debug('experimental search enabled');
-      return this.streamSearch(startkey, options);
-    } else {
-      // @ts-ignore
-      return this.legacySearch(startkey, options);
-    }
-  }
-
-  // private searchInstance(upStream: any, options: any): Stream.PassThrough {
-  //   const searchUpstream: IUploadTarball = upStream.search(options);
-  //   // searchUpstream.on('error', (err): void => {
-  //   //   this.logger.error({ err }, 'search uplink error: @{err?.message}');
-  //   //   // if uplink fails we report it, but we continue to search
-  //   //   upStream.emit('error', err);
-  //   // });
-  //   // searchUpstream.on('end', (): void => {
-  //   //   debug('search remote end for %o', upStream.config.url);
-  //   // });
-  //   return searchUpstream;
-  // }
-
-  /**
-   * Peform search on all local storage
-   * @param {string} startkey
-   * @param {stream} streamSearch
-   */
-  private searchLocalStorage(searchStream: IReadTarball, startkey: string): void {
-    // @ts-ignore
-    const localSearchStream: IReadTarball = this.localStorage.streamSearch(startkey);
-    searchStream.abort = function (): void {
-      localSearchStream.abort();
-    };
-    localSearchStream.pipe(searchStream, { end: true });
-    localSearchStream.on('error', (err: VerdaccioError): void => {
-      this.logger.error({ err: err }, 'search error: @{err?.message}');
-      searchStream.end();
-    });
-  }
-
-  private streamSearch(startkey: string, options: ProxySearchParams): any {
-    const streamMerged = merge2();
-    const searchPassThrough: any = new Stream.PassThrough({ objectMode: true });
-    const uplinksList = Object.keys(this.uplinks);
-    uplinksList.map((uplinkId) => {
-      const uplink = this.uplinks[uplinkId];
-      if (!uplink) {
-        // this should never tecnically happens
-        this.logger.error({ uplinkId }, 'uplink @upLinkId not found');
-        throw new Error(`uplink ${uplinkId} not found`);
-      }
-      const abort = new AbortController();
-      const uplinkSearchStream = await uplink.search({ ...options, abort });
-      uplinkSearchStream.on('readable', function () {
-        // There is some data to read now.
-        console.log('-=*************************');
-      });
-      streamMerged.add(uplinkSearchStream);
-    });
-
-    // const localStream = this.searchLocalStorage(stream, startkey);
-
-    return streamMerged;
-  }
-
-  /**
-   Retrieve remote and local packages more recent than {startkey}
-   Function streams all packages from all uplinks first, and then
-   local packages.
-   Note that local packages could override registry ones just because
-   they appear in JSON last. That's a trade-off we make to avoid
-   memory issues.
-   Used storages: local && uplink (proxy_access)
-   * @deprecated
-   * @param {*} startkey
-   * @param {*} options
-   * @return {Stream}
-   */
-  private legacySearch(startkey: string, options: any): IReadTarball {
-    const self = this;
-    // stream to write a tarball
-    const streamTunnel: any = new Stream.PassThrough({ objectMode: true });
-
-    async.eachSeries(
-      Object.keys(this.uplinks),
-      function (up_name, cb): void {
-        // shortcut: if `local=1` is supplied, don't call uplinks
-        if (options.req.query.local !== undefined) {
-          return cb();
-        }
-        // search by keyword for each uplink
-        const lstream: IUploadTarball = self.uplinks[up_name].search(options);
-        // join streams
-        lstream.pipe(streamTunnel, { end: false });
-        lstream.on('error', function (err): void {
-          self.logger.error({ err: err }, 'uplink error: @{err?.message}');
-          cb();
-          cb = function (): void {};
-        });
-        lstream.on('end', function (): void {
-          cb();
-          cb = function (): void {};
-        });
-
-        streamTunnel.abort = function (): void {
-          if (lstream.abort) {
-            lstream.abort();
-          }
-          cb();
-          cb = function (): void {};
-        };
-      },
-      // executed after all series
-      function (): void {
-        // attach a local search results
-        const localSearchStream: IReadTarball = self.localStorage.search(startkey);
-        streamTunnel.abort = function (): void {
-          localSearchStream.abort();
-        };
-        localSearchStream.pipe(streamTunnel, { end: true });
-        localSearchStream.on('error', function (err: VerdaccioError): void {
-          self.logger.error({ err: err }, 'search error: @{err?.message}');
-          streamTunnel.end();
-        });
-      }
-    );
-
-    return streamTunnel;
   }
 
   /**

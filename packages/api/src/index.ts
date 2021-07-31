@@ -59,6 +59,7 @@ export default function (config: Config, auth: IAuth, storage: IStorageHandler):
   publish(app, auth, storage, config);
   ping(app);
   stars(app, storage);
+  // @ts-ignore
   v1Search(app, auth, storage);
   token(app, auth, storage, config);
   return app;

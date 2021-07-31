@@ -85,9 +85,10 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}>, StreamLo
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public search(_onPackage: Callback, _onEnd: Callback): void {
     // FUTURE: remove when legacy class is gone, not need it here
+    this.logger.warn('old search method was removed');
+    _onEnd(null, []);
   }
 
   public streamSearch(emitter: searchUtils.SearchEmitter): void {

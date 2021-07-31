@@ -3,7 +3,9 @@ import _ from 'lodash';
 import semver from 'semver';
 import { Package } from '@verdaccio/types';
 import { logger } from '@verdaccio/logger';
+import { IAuth } from '@verdaccio/auth';
 import { HTTP_STATUS, getInternalError } from '@verdaccio/commons-api';
+import { Storage } from '@verdaccio/store';
 
 type PublisherMaintainer = {
   username: string;
@@ -178,7 +180,7 @@ class TransFormResults extends Transform {
           if (!isInteresting(pkgItem?.package)) {
             return;
           }
-          logger.info(`[remote] streaming name ${pkgItem?.package?.name}`);
+          logger.debug(`[remote] streaming name ${pkgItem?.package?.name}`);
           return true;
         })
         .forEach((pkgItem) => {
@@ -189,7 +191,7 @@ class TransFormResults extends Transform {
       if (!isInteresting(chunk)) {
         return callback();
       }
-      logger.info(`[local] streaming pkg name ${(chunk as PackageResults)?.name}`);
+      logger.debug(`[local] streaming pkg name ${(chunk as PackageResults)?.name}`);
       this.push(chunk);
       return callback();
     }
@@ -200,9 +202,9 @@ class TransFormResults extends Transform {
  * Endpoint for npm search v1
  * Empty value
  *  - {"objects":[],"total":0,"time":"Sun Jul 25 2021 14:09:11 GMT+0000 (Coordinated Universal Time)"}
- * req: 'GET /-/v1/search?text=react&size=20&from=0&quality=0.65&popularity=0.98&maintenance=0.5'
+ * req: 'GET /-/v1/search?text=react&size=20&frpom=0&quality=0.65&popularity=0.98&maintenance=0.5'
  */
-export default function (route, auth, storage): void {
+export default function (route, auth: IAuth, storage: Storage): void {
   route.get('/-/v1/search', async (req, res, next) => {
     // TODO: implement proper result scoring weighted by quality, popularity and maintenance query parameters
     let [text, size, from /* , quality, popularity, maintenance */] = [
@@ -251,15 +253,17 @@ export default function (route, auth, storage): void {
       },
     });
     const transformResults = new TransFormResults(text, logger, { objectMode: true });
-    const searchStream = storage.search(0, {
+
+    const streamPassThrough = new PassThrough({ objectMode: true });
+    storage.searchManager?.search(streamPassThrough, {
       headers: req.headers,
       query: req.query,
       url: req.url,
-      remote_user: req.remote_user,
     });
+
     // console.log('--searchStream', searchStream);
     const outPutStream = new PassThrough({ objectMode: true });
-    pipeline(searchStream, transformResults, transformToSearchPkg, outPutStream, (err) => {
+    pipeline(streamPassThrough, transformResults, transformToSearchPkg, outPutStream, (err) => {
       if (err) {
         next(getInternalError(err ? err.message : 'unknown error'));
       } else {

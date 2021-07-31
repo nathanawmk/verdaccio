@@ -7,6 +7,7 @@ import { Config, parseConfigFile } from '@verdaccio/config';
 import { streamUtils } from '@verdaccio/core';
 import { ProxyStorage, SearchQuery } from '../src/up-storage';
 
+// FUTURE: remove me when v15 is the min required version
 if (semver.lte(process.version, 'v15.0.0')) {
   global.AbortController = require('abortcontroller-polyfill/dist/cjs-ponyfill').AbortController;
 }
@@ -73,7 +74,7 @@ describe('proxy', () => {
         },
         query,
         abort,
-        url: `${domain}/-/v1/search`,
+        url: `/-/v1/search`,
       });
 
       expect(await streamUtils.readableToString(stream)).toEqual('{"body":{"foo":1}}');
@@ -94,7 +95,7 @@ describe('proxy', () => {
           },
           query,
           abort,
-          url: `${domain}/-/v1/search`,
+          url: `/-/v1/search`,
         })
       ).rejects.toThrow('bad status code 409 from uplink');
     });
@@ -139,7 +140,7 @@ describe('proxy', () => {
           },
           query,
           abort,
-          url: `${domain}/-/v1/search`,
+          url: `/-/v1/search`,
         })
       ).rejects.toThrow('bad status code 500 from uplink');
     });

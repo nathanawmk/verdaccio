@@ -12,7 +12,7 @@ import {
 import { Package, Version, Author, StringValue } from '@verdaccio/types';
 import { API_ERROR, HTTP_STATUS, DIST_TAGS, USERS } from '@verdaccio/commons-api';
 import { SearchInstance } from './search';
-import { IStorage } from './storage';
+import { IStorage } from './type';
 
 export const STORAGE = {
   PACKAGE_FILE_NAME: 'package.json',
