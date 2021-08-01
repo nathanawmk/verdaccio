@@ -5,7 +5,7 @@ import _ from 'lodash';
 import buildDebug from 'debug';
 
 import { ErrorCode, isObject, getLatestVersion, validateName } from '@verdaccio/utils';
-import { searchUtils } from '@verdaccio/core';
+import { searchUtils, pluginUtils } from '@verdaccio/core';
 import { API_ERROR, DIST_TAGS, HTTP_STATUS, SUPPORT_ERRORS, USERS } from '@verdaccio/commons-api';
 import { createTarballHash } from '@verdaccio/utils';
 import { loadPlugin } from '@verdaccio/loaders';
@@ -23,17 +23,13 @@ import {
   DistFile,
   Callback,
   Logger,
-  IPluginStorage,
   IPackageStorage,
   Author,
   CallbackAction,
-  onSearchPackage,
   StringValue,
-  onEndSearchPackage,
   StorageUpdateCallback,
 } from '@verdaccio/types';
 import { VerdaccioError } from '@verdaccio/commons-api';
-import { IStorage } from './type';
 
 import {
   prepareSearchPackage,
@@ -49,19 +45,21 @@ import {
 
 const debug = buildDebug('verdaccio:storage:local');
 
+export type IPluginStorage = pluginUtils.IPluginStorage<Config>;
+
 /**
  * Implements Storage interface (same for storage.js, local-storage.js, up-storage.js).
  */
-class LocalStorage implements IStorage {
+class LocalStorage {
   public config: Config;
-  public storagePlugin: IPluginStorage<Config>;
+  public storagePlugin: IPluginStorage;
   public logger: Logger;
 
   public constructor(config: Config, logger: Logger) {
     debug('local storage created');
     this.logger = logger.child({ sub: 'fs' });
     this.config = config;
-    // @ts-ignore
+    // @ts-expect-error
     this.storagePlugin = null;
   }
 
@@ -70,7 +68,7 @@ class LocalStorage implements IStorage {
       this.storagePlugin = this._loadStorage(this.config, this.logger);
       await this.storagePlugin.init();
     } else {
-      debug('storage plugin has been already initialized');
+      this.logger.warn('storage plugin has been already initialized');
     }
     return;
   }
@@ -682,37 +680,33 @@ class LocalStorage implements IStorage {
     this._readPackage(name, storage, callback);
   }
 
-  public streamSearch(startKey: string): PassThrough {
+  public search(query: searchUtils.SearchQuery): PassThrough {
     const stream = new PassThrough({ objectMode: true });
-    // save wait whether plugin still do not support search functionality
     debug('search on each package');
-    this.logger.info({ startKey }, 'search by @{startKey}');
+    this.logger.info(
+      { t: query.text, q: query.quality, p: query.popularity, m: query.maintenance, s: query.size },
+      'search by @{t}|@{s}|@{q}|@{p}'
+    );
     if (_.isNil(this.storagePlugin.search)) {
       this.logger.info('plugin search not implemented yet');
       stream.end();
       return stream;
     } else {
       const emitter = new searchUtils.SearchEmitter();
-
       emitter.on('package', (searchItem: searchUtils.onPackageSearchItem) => {
-        // FIXME: temporary solution while plugin uses async module
         const [item, cb] = searchItem;
-        if (item.time > parseInt(startKey, 10)) {
-          this.getPackageMetadata(item.name, (err: VerdaccioError, pkg: Package): void => {
-            if (err) {
-              return cb(err);
-            }
+        this.getPackageMetadata(item.name, (err: VerdaccioError, pkg: Package): void => {
+          if (err) {
+            return cb(err);
+          }
 
-            const time = new Date(item.time).toISOString();
-            const result = prepareSearchPackage(pkg, time);
-            if (_.isNil(result) === false) {
-              stream.push(result);
-            }
-            cb(null);
-          });
-        } else {
+          const time = new Date(item.time).toISOString();
+          const result = prepareSearchPackage(pkg, time);
+          if (_.isNil(result) === false) {
+            stream.push(result);
+          }
           cb(null);
-        }
+        });
       });
 
       emitter.once('end', () => {
@@ -720,68 +714,9 @@ class LocalStorage implements IStorage {
       });
 
       debug('search on each package by plugin');
-      // FIXME: temporary solution while plugin uses async module
-      // @ts-ignore
-      this.storagePlugin.streamSearch(emitter);
+      this.storagePlugin.search(emitter, query);
 
       return stream;
-    }
-  }
-
-  /**
-   * @deprecated
-   */
-  public search(startKey: string): IReadTarball {
-    const stream = new ReadTarball({ objectMode: true });
-    debug('search by %o', startKey);
-    this._searchEachPackage(
-      (item: Package, cb: CallbackAction): void => {
-        // @ts-ignore
-        if (item.time > parseInt(startKey, 10)) {
-          this.getPackageMetadata(item.name, (err: VerdaccioError, data: Package): void => {
-            if (err) {
-              return cb(err);
-            }
-
-            // @ts-ignore
-            const time = new Date(item.time).toISOString();
-            const result = prepareSearchPackage(data, time);
-            if (_.isNil(result) === false) {
-              stream.push(result);
-            }
-            cb(null);
-          });
-        } else {
-          cb(null);
-        }
-      },
-      function onEnd(err): void {
-        if (err) {
-          stream.emit('error', err);
-          return;
-        }
-        stream.end();
-      }
-    );
-
-    return stream;
-  }
-
-  /**
-   * Walks through each package and calls `on_package` on them.
-   * @param {*} onPackage
-   * @param {*} onEnd
-   * @deprecated
-   */
-  private _searchEachPackage(onPackage: onSearchPackage, onEnd: onEndSearchPackage): void {
-    // save wait whether plugin still do not support search functionality
-    debug('search on each package');
-    if (_.isNil(this.storagePlugin.search)) {
-      this.logger.warn('plugin search not implemented yet');
-      onEnd();
-    } else {
-      debug('search on each package by plugin');
-      this.storagePlugin.search(onPackage, onEnd);
     }
   }
 
@@ -960,27 +895,27 @@ class LocalStorage implements IStorage {
     return this.storagePlugin.setSecret(config.checkSecretKey(secretKey));
   }
 
-  private _loadStorage(config: Config, logger: Logger): IPluginStorage<Config> {
+  private _loadStorage(config: Config, logger: Logger): IPluginStorage {
     const Storage = this._loadStorePlugin();
 
     if (_.isNil(Storage)) {
       assert(this.config.storage, 'CONFIG: storage path not defined');
       return new LocalDatabase(this.config, logger);
     }
-    return Storage as IPluginStorage<Config>;
+    return Storage as IPluginStorage;
   }
 
-  private _loadStorePlugin(): IPluginStorage<Config> | void {
+  private _loadStorePlugin(): IPluginStorage | void {
     const plugin_params = {
       config: this.config,
       logger: this.logger,
     };
 
-    const plugins: IPluginStorage<Config>[] = loadPlugin<IPluginStorage<Config>>(
+    const plugins: IPluginStorage[] = loadPlugin<IPluginStorage>(
       this.config,
       this.config.store,
       plugin_params,
-      (plugin): IPluginStorage<Config> => {
+      (plugin): IPluginStorage => {
         return plugin.getPackageStorage;
       }
     );

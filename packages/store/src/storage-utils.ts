@@ -12,7 +12,7 @@ import {
 import { Package, Version, Author, StringValue } from '@verdaccio/types';
 import { API_ERROR, HTTP_STATUS, DIST_TAGS, USERS } from '@verdaccio/commons-api';
 import { SearchInstance } from './search';
-import { IStorage } from './type';
+import { LocalStorage } from './local-storage';
 
 export const STORAGE = {
   PACKAGE_FILE_NAME: 'package.json',
@@ -132,7 +132,7 @@ export const WHITELIST = [
   'users',
 ];
 
-export function cleanUpLinksRef(keepUpLinkData: boolean, result: Package): Package {
+export function cleanUpLinksRef(result: Package, keepUpLinkData?: boolean): Package {
   const propertyToKeep = [...WHITELIST];
   if (keepUpLinkData === true) {
     propertyToKeep.push('_uplinks');
@@ -153,7 +153,7 @@ export function cleanUpLinksRef(keepUpLinkData: boolean, result: Package): Packa
  * @param {*} name
  * @param {*} localStorage
  */
-export function checkPackageLocal(name: string, localStorage: IStorage): Promise<any> {
+export function checkPackageLocal(name: string, localStorage: LocalStorage): Promise<any> {
   return new Promise<void>((resolve, reject): void => {
     localStorage.getPackageMetadata(name, (err, results): void => {
       if (!isNil(err) && err.status !== HTTP_STATUS.NOT_FOUND) {
@@ -167,7 +167,11 @@ export function checkPackageLocal(name: string, localStorage: IStorage): Promise
   });
 }
 
-export function publishPackage(name: string, metadata: any, localStorage: IStorage): Promise<any> {
+export function publishPackage(
+  name: string,
+  metadata: any,
+  localStorage: LocalStorage
+): Promise<any> {
   return new Promise<void>((resolve, reject): void => {
     localStorage.addPackage(name, metadata, (err, latest): void => {
       if (!_.isNull(err)) {

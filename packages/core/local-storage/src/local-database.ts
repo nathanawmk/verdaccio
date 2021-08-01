@@ -4,15 +4,7 @@ import { mkdir } from 'fs/promises';
 import buildDebug from 'debug';
 import _ from 'lodash';
 import async from 'async';
-import {
-  Callback,
-  Config,
-  IPackageStorage,
-  IPluginStorage,
-  LocalStorage,
-  Logger,
-  StreamLocalData,
-} from '@verdaccio/types';
+import { Config, IPackageStorage, IPluginStorage, LocalStorage, Logger } from '@verdaccio/types';
 import { errorUtils, validatioUtils, searchUtils } from '@verdaccio/core';
 import { getMatchedPackagesSpec } from '@verdaccio/utils';
 
@@ -29,7 +21,7 @@ const debug = buildDebug('verdaccio:plugin:local-storage:experimental');
 export const ERROR_DB_LOCKED =
   'Database is locked, please check error message printed during startup to prevent data loss';
 
-class LocalDatabase extends TokenActions implements IPluginStorage<{}>, StreamLocalData {
+class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
   public path: string;
   public logger: Logger;
   public data: LocalStorage | void;
@@ -85,13 +77,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}>, StreamLo
     }
   }
 
-  public search(_onPackage: Callback, _onEnd: Callback): void {
-    // FUTURE: remove when legacy class is gone, not need it here
-    this.logger.warn('old search method was removed');
-    _onEnd(null, []);
-  }
-
-  public streamSearch(emitter: searchUtils.SearchEmitter): void {
+  public search(emitter: searchUtils.SearchEmitter, query: searchUtils.SearchQuery): void {
     const storages = this._getCustomPackageLocalStorages();
     debug(`search custom local packages: %o`, JSON.stringify(storages));
     const base = Path.dirname(this.config.config_path);

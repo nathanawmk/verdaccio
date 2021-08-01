@@ -63,7 +63,6 @@ export default class ProxyAudit implements IPluginMiddleware<{}> {
 
           res.status(response.status).end();
         } catch (err) {
-          console.log('-->', err);
           res.status(500).end();
         }
       })();

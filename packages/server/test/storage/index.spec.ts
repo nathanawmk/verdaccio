@@ -3,7 +3,7 @@ import fs from 'fs';
 import { Writable } from 'stream';
 import { Config as AppConfig } from '@verdaccio/config';
 import { Storage } from '@verdaccio/store';
-import { IStorageHandler } from '@verdaccio/store';
+import { Storage } from '@verdaccio/store';
 
 import { Config } from '@verdaccio/types';
 import { API_ERROR, HTTP_STATUS } from '@verdaccio/commons-api';
@@ -32,7 +32,7 @@ const generateStorage = async function () {
   );
 
   const config: Config = new AppConfig(storageConfig);
-  const store: IStorageHandler = new Storage(config);
+  const store: Storage = new Storage(config);
   await store.init(config, []);
 
   return store;
@@ -72,7 +72,7 @@ const generateSameUplinkStorage = async function () {
   );
 
   const config: Config = new AppConfig(storageConfig);
-  const store: IStorageHandler = new Storage(config);
+  const store: Storage = new Storage(config);
   await store.init(config, []);
 
   return store;
@@ -102,7 +102,7 @@ describe('StorageTest', () => {
   });
 
   test('should be defined', async () => {
-    const storage: IStorageHandler = await generateStorage();
+    const storage: Storage = await generateStorage();
 
     expect(storage).toBeDefined();
   });
@@ -111,7 +111,7 @@ describe('StorageTest', () => {
     test.skip(
       'should select right uplink given package.proxy for' + ' upstream tarballs',
       async (done) => {
-        const storage: IStorageHandler = await generateSameUplinkStorage();
+        const storage: Storage = await generateSameUplinkStorage();
         const notcachedSpy = jest.spyOn(storage.uplinks.notcached, 'fetchTarball');
         const cachedSpy = jest.spyOn(storage.uplinks.cached, 'fetchTarball');
 
@@ -158,7 +158,7 @@ describe('StorageTest', () => {
 
   describe('test _syncUplinksMetadata', () => {
     test('should fetch from uplink jquery metadata from registry', async () => {
-      const storage: IStorageHandler = await generateStorage();
+      const storage: Storage = await generateStorage();
 
       return new Promise((resolve) => {
         // @ts-ignore
@@ -172,7 +172,7 @@ describe('StorageTest', () => {
     });
 
     test('should fails on fetch from uplink non existing from registry', async () => {
-      const storage: IStorageHandler = await generateStorage();
+      const storage: Storage = await generateStorage();
       return new Promise((resolve) => {
         storage._syncUplinksMetadata('@verdaccio/404', null, {}, (err, _metadata, errors) => {
           expect(err).not.toBeNull();
@@ -185,7 +185,7 @@ describe('StorageTest', () => {
     });
 
     test('should fails on fetch from uplink corrupted pkg from registry', async () => {
-      const storage: IStorageHandler = await generateStorage();
+      const storage: Storage = await generateStorage();
       return new Promise((resolve) => {
         // @ts-ignore
         storage._syncUplinksMetadata('corrupted-package', null, {}, (err, metadata, errors) => {
@@ -200,7 +200,7 @@ describe('StorageTest', () => {
 
     test.skip('should not touch if the package exists and has no uplinks', async (done) => {
       const storagePath = generateRamdonStorage();
-      const storage: IStorageHandler = (await generateStorage()) as IStorageHandler;
+      const storage: Storage = (await generateStorage()) as Storage;
       const metadataSource = path.join(__dirname, '../../partials/metadata');
       const metadataPath = path.join(storagePath, 'npm_test/package.json');
 

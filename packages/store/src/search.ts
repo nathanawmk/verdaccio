@@ -8,7 +8,9 @@ import { logger } from '@verdaccio/logger';
 import { Version, IPluginStorage, Config, Package } from '@verdaccio/types';
 import { IProxy, ProxyList, ProxySearchParams } from '@verdaccio/proxy';
 import { VerdaccioError } from '@verdaccio/commons-api';
-import { IStorage, IStorageHandler } from './type';
+import { searchUtils } from '@verdaccio/core';
+import { LocalStorage } from './local-storage';
+import { Storage } from './storage';
 export interface ISearchResult {
   ref: string;
   score: number;
@@ -179,19 +181,19 @@ class TransFormResults extends Transform {
 
 export interface IWebSearch {
   index: lunrMutable.index;
-  storage: IStorageHandler;
+  storage: Storage;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   query(query: string): ISearchResult[];
   add(pkg: Version): void;
   remove(name: string): void;
   reindex(): void;
-  configureStorage(storage: IStorageHandler): void;
+  configureStorage(storage: Storage): void;
 }
 
 export class SearchManager {
   public readonly uplinks: ProxyList;
-  public readonly storage: IStorage;
-  constructor(uplinks: ProxyList, storage: IStorage) {
+  public readonly storage: LocalStorage;
+  constructor(uplinks: ProxyList, storage: LocalStorage) {
     this.uplinks = uplinks;
     this.storage = storage;
   }
@@ -223,15 +225,13 @@ export class SearchManager {
       throw err;
     }
 
-    searchPassThrough.end();
-    // @ts-ignore
-    // const localStream = this.storage.streamSearch('not_used');
-    // // we close the stream
-    // localStream.pipe(searchPassThrough, { end: true });
-    // localStream.on('error', (err: VerdaccioError): void => {
-    //   logger.error({ err: err }, 'search error: @{err?.message}');
-    //   searchPassThrough.end();
-    // });
+    const localStream = this.storage.search(options.query as searchUtils.SearchQuery);
+    // we close the stream
+    localStream.pipe(searchPassThrough, { end: true });
+    localStream.on('error', (err: VerdaccioError): void => {
+      logger.error({ err: err }, 'search error: @{err?.message}');
+      searchPassThrough.end();
+    });
   }
 
   /**
@@ -265,7 +265,7 @@ export class SearchManager {
 class Search implements IWebSearch {
   public readonly index: lunrMutable.index;
   // @ts-ignore
-  public storage: IStorageHandler;
+  public storage: Storage;
 
   /**
    * Constructor.
@@ -303,7 +303,7 @@ class Search implements IWebSearch {
    * @return {Array} list of results.
    */
   public query(query: string): ISearchResult[] {
-    const localStorage = this.storage.localStorage as IStorage;
+    const localStorage = this.storage.localStorage as LocalStorage;
 
     return query === '*'
       ? (localStorage.storagePlugin as IPluginStorage<Config>).get((items): any => {
@@ -357,7 +357,7 @@ class Search implements IWebSearch {
    * Set up the {Storage}
    * @param {*} storage An storage reference.
    */
-  public configureStorage(storage: IStorageHandler): void {
+  public configureStorage(storage: Storage): void {
     this.storage = storage;
     this.reindex();
   }

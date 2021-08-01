@@ -1,8 +1,6 @@
 /* global AbortController */
 
-import Stream, { PassThrough, pipeline, Readable } from 'stream';
-import zlib from 'zlib';
-import { promisify } from 'util';
+import Stream, { PassThrough, Readable } from 'stream';
 import { URL } from 'url';
 import buildDebug from 'debug';
 import _ from 'lodash';
@@ -20,14 +18,12 @@ import {
   CHARACTER_ENCODING,
 } from '@verdaccio/commons-api';
 import { Config, Callback, Logger, UpLinkConf, IReadTarball } from '@verdaccio/types';
-import { errorUtils, validatioUtils } from '@verdaccio/core';
-import { stream } from 'undici';
+import { errorUtils, validatioUtils, searchUtils } from '@verdaccio/core';
 import { parseInterval } from './proxy-utils';
 const LoggerApi = require('@verdaccio/logger');
 
 const fetch = require('undici-fetch');
 const debug = buildDebug('verdaccio:proxy');
-const pipelineAsync = promisify(pipeline);
 
 const encode = function (thing): string {
   return encodeURIComponent(thing).replace(/^%40/, '@');
@@ -51,21 +47,10 @@ export interface ProxyList {
   [key: string]: IProxy;
 }
 
-export type Headersdd = {
-  [key: string]: string;
-};
-
-export type SearchQuery = {
-  text: string;
-  size: number;
-  quality: number;
-  popularity: number;
-  maintenance: number;
-};
-
 export type ProxySearchParams = {
   headers?: Headers;
   url: string;
+  query?: searchUtils.SearchQuery;
   abort?: AbortController;
 };
 export interface IProxy {

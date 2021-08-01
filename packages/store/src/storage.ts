@@ -24,6 +24,7 @@ import {
   GenericBody,
   TokenFilter,
   Token,
+  CallbackAction,
 } from '@verdaccio/types';
 import { hasProxyTo } from '@verdaccio/config';
 import { logger } from '@verdaccio/logger';
@@ -40,7 +41,7 @@ import {
   mergeUplinkTimeIntoLocal,
   generatePackageTemplate,
 } from './storage-utils';
-import { IStorage, ISyncUplinks, IPluginFilters, IGetPackageOptions } from './type';
+import { ISyncUplinks, IPluginFilters, IGetPackageOptions } from './type';
 
 if (semver.lte(process.version, 'v15.0.0')) {
   global.AbortController = require('abortcontroller-polyfill/dist/cjs-ponyfill').AbortController;
@@ -48,7 +49,7 @@ if (semver.lte(process.version, 'v15.0.0')) {
 
 const debug = buildDebug('verdaccio:storage');
 class Storage {
-  public localStorage: IStorage;
+  public localStorage: LocalStorage;
   public searchManager: SearchManager | null;
   public readonly config: Config;
   public readonly logger: Logger;
@@ -99,7 +100,7 @@ class Storage {
         this._syncUplinksMetadata.bind(this)
       );
       debug('publishing a package for %o', name);
-      await publishPackage(name, metadata, this.localStorage as IStorage);
+      await publishPackage(name, metadata, this.localStorage as LocalStorage);
       callback();
     } catch (err) {
       debug('error on add a package for %o with error %o', name, err?.error);
@@ -136,7 +137,7 @@ class Storage {
     version: string,
     metadata: Version,
     tag: StringValue,
-    callback: Callback
+    callback: CallbackAction
   ): void {
     debug('add the version %o for package %o', version, name);
     this.localStorage.addVersion(name, version, metadata, tag, callback);
@@ -146,7 +147,7 @@ class Storage {
    * Tags a package version with a provided tag
    Used storages: local (write)
    */
-  public mergeTags(name: string, tagHash: MergeTags, callback: Callback): void {
+  public mergeTags(name: string, tagHash: MergeTags, callback: CallbackAction): void {
     debug('merge tags for package %o tags %o', name, tagHash);
     this.localStorage.mergeTags(name, tagHash, callback);
   }
@@ -185,7 +186,12 @@ class Storage {
    versions, i.e. package version should be unpublished first.
    Used storage: local (write)
    */
-  public removeTarball(name: string, filename: string, revision: string, callback: Callback): void {
+  public removeTarball(
+    name: string,
+    filename: string,
+    revision: string,
+    callback: CallbackAction
+  ): void {
     this.localStorage.removeTarball(name, filename, revision, callback);
   }
 
@@ -372,7 +378,7 @@ class Storage {
             return options.callback(err);
           }
 
-          normalizeDistTags(cleanUpLinksRef(options.keepUpLinkData, result));
+          normalizeDistTags(cleanUpLinksRef(result, options?.keepUpLinkData));
 
           // npm can throw if this field doesn't exist
           result._attachments = {};

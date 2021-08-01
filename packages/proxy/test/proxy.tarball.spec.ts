@@ -1,6 +1,5 @@
 import path from 'path';
 import nock from 'nock';
-import * as httpMocks from 'node-mocks-http';
 import { Config, parseConfigFile } from '@verdaccio/config';
 import { ErrorCode } from '@verdaccio/utils';
 import { API_ERROR, HEADER_TYPE, HTTP_STATUS, VerdaccioError } from '@verdaccio/commons-api';

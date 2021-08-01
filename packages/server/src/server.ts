@@ -17,28 +17,23 @@ import webMiddleware from '@verdaccio/web';
 import { ConfigRuntime } from '@verdaccio/types';
 
 import { IAuth, IBasicAuth } from '@verdaccio/auth';
-import { Storage, IStorageHandler } from '@verdaccio/store';
+import { Storage } from '@verdaccio/store';
 import { logger } from '@verdaccio/logger';
 import { log, final, errorReportingMiddleware } from '@verdaccio/middleware';
 import AuditMiddleware from 'verdaccio-audit';
 
-import {
-  Config as IConfig,
-  IPluginStorageFilter,
-  IStorageManager,
-  IPlugin,
-} from '@verdaccio/types';
+import { Config as IConfig, IPluginStorageFilter, IPlugin } from '@verdaccio/types';
 import { $ResponseExtend, $RequestExtend, $NextFunctionVer } from '../types/custom';
 
 import hookDebug from './debug';
 
-interface IPluginMiddleware<T> extends IPlugin<T> {
-  register_middlewares(app: any, auth: IBasicAuth<T>, storage: IStorageManager<T>): void;
+export interface IPluginMiddleware<T> extends IPlugin<T> {
+  register_middlewares(app: any, auth: IBasicAuth<T>, storage: Storage): void;
 }
 
 const debug = buildDebug('verdaccio:server');
 
-const defineAPI = function (config: IConfig, storage: IStorageHandler): any {
+const defineAPI = function (config: IConfig, storage: Storage): any {
   const auth: IAuth = new Auth(config);
   const app: Application = express();
   const limiter = new RateLimit(config.serverSettings.rateLimit);
@@ -160,14 +155,13 @@ export default (async function (configHash: ConfigRuntime): Promise<any> {
   );
   debug('loaded filter plugin');
   // @ts-ignore
-  const storage: IStorageHandler = new Storage(config);
+  const storage: Storage = new Storage(config);
   try {
     // waits until init calls have been initialized
     debug('storage init start');
     await storage.init(config, filters);
     debug('storage init end');
   } catch (err) {
-    console.log('--error storage init', err);
     logger.error({ error: err.msg }, 'storage has failed: @{error}');
     throw new Error(err);
   }

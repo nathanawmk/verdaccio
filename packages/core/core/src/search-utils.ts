@@ -14,4 +14,12 @@ class SearchEmitter extends EventEmitter {
   }
 }
 
+export type SearchQuery = {
+  text: string;
+  size: number;
+  quality: number;
+  popularity: number;
+  maintenance: number;
+};
+
 export { SearchEmitter };
