@@ -183,7 +183,7 @@ declare module '@verdaccio/types' {
     name: string;
     versions: Versions;
     'dist-tags': GenericBody;
-    time?: GenericBody;
+    time: GenericBody;
     readme?: string;
     users?: PackageUsers;
     _distfiles: DistFiles;

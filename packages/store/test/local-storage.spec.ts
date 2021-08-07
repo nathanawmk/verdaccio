@@ -2,7 +2,6 @@ import path from 'path';
 import rimRaf from 'rimraf';
 
 import { Config as AppConfig } from '@verdaccio/config';
-// @ts-ignore
 import { logger, setup } from '@verdaccio/logger';
 import { configExample, generateNewVersion } from '@verdaccio/mock';
 
@@ -11,14 +10,13 @@ import { Config, MergeTags, Package } from '@verdaccio/types';
 import { API_ERROR, HTTP_STATUS, DIST_TAGS } from '@verdaccio/commons-api';
 import { VerdaccioError } from '@verdaccio/commons-api';
 import { LocalStorage } from '../src/local-storage';
-import { IStorage } from '../src/storage';
 import { generatePackageTemplate } from '../src/storage-utils';
 import { readFile } from './fixtures/test.utils';
 
 setup([]);
 
 describe('LocalStorage', () => {
-  let storage: IStorage;
+  let storage: LocalStorage;
   const pkgName = 'npm_test';
   const pkgNameScoped = `@scope/${pkgName}-scope`;
   const tarballName = `${pkgName}-add-tarball-1.0.4.tgz`;

@@ -5,5 +5,15 @@ import * as validatioUtils from './validation-utils';
 import * as constants from './constants';
 import * as pluginUtils from './plugin-utils';
 import * as fileUtils from './file-utils';
+import * as pkgUtils from './pkg-utils';
 
-export { fileUtils, searchUtils, streamUtils, errorUtils, validatioUtils, constants, pluginUtils };
+export {
+  fileUtils,
+  pkgUtils,
+  searchUtils,
+  streamUtils,
+  errorUtils,
+  validatioUtils,
+  constants,
+  pluginUtils,
+};

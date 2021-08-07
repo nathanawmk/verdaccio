@@ -51,13 +51,13 @@ export async function getFolders(storagePath): Promise<string[]> {
  * @param {Set<string>} storages storages are defined peer package access pattern via `storage` property
  * @param query is the search query from the user via npm search command.
  * and are intended to organize packages in a tree structure.
- * @returns {Promise<searchUtils.SearchItem[]>}
+ * @returns {Promise<searchUtils.SearchItemPkg[]>}
  */
 export async function searchOnStorage(
   storagePath: string,
   storages: Map<string, string>,
   query: searchUtils.SearchQuery
-): Promise<searchUtils.SearchItem[]> {
+): Promise<searchUtils.SearchItemPkg[]> {
   const results: any[] = [];
   const matchedStorages = Array.from(storages).map(([key]) => {
     const path = join(storagePath, key, posix.sep);
@@ -91,7 +91,7 @@ export async function searchOnStorage(
     }
   }
 
-  return results.filter((item: searchUtils.SearchItem) => {
+  return results.filter((item: searchUtils.SearchItemPkg) => {
     return item?.name?.match(query.text) !== null;
-  }) as searchUtils.SearchItem[];
+  }) as searchUtils.SearchItemPkg[];
 }

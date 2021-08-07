@@ -4,12 +4,13 @@ import {
   ErrorCode,
   isObject,
   normalizeDistTags,
-  semverSort,
   generateRandomHexString,
   isNil,
 } from '@verdaccio/utils';
 
 import { Package, Version, Author, StringValue } from '@verdaccio/types';
+
+import { pkgUtils } from '@verdaccio/core';
 import { API_ERROR, HTTP_STATUS, DIST_TAGS, USERS } from '@verdaccio/commons-api';
 import { SearchInstance } from './search';
 import { LocalStorage } from './local-storage';
@@ -229,11 +230,7 @@ export function mergeUplinkTimeIntoLocal(localMetadata: Package, remoteMetadata:
 }
 
 export function prepareSearchPackage(data: Package): any {
-  const listVersions: string[] = Object.keys(data.versions);
-  const versions: string[] = semverSort(listVersions);
-  const latest: string | undefined = data[DIST_TAGS]?.latest
-    ? data[DIST_TAGS].latest
-    : versions.pop();
+  const latest = pkgUtils.getLatest(data);
 
   if (latest && data.versions[latest]) {
     const version: Version = data.versions[latest];

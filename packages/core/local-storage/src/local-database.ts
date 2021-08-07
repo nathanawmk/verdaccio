@@ -112,7 +112,17 @@ class LocalDatabase extends TokenActions implements IPluginStorage {
     const packagesOnStorage = await searchOnStorage(storagePath, this.storages, query);
     debug('packages found %o', packagesOnStorage.length);
     for (let storage of packagesOnStorage) {
-      emitter.addPackage(storage);
+      emitter.addPackage({
+        package: storage,
+        score: {
+          final: 1,
+          detail: {
+            maintenance: 0,
+            popularity: 1,
+            quality: 1,
+          },
+        },
+      });
     }
 
     emitter.end();

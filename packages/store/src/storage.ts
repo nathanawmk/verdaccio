@@ -7,7 +7,7 @@ import semver from 'semver';
 import { ProxyStorage } from '@verdaccio/proxy';
 import { API_ERROR, HTTP_STATUS, DIST_TAGS } from '@verdaccio/commons-api';
 import { ReadTarball } from '@verdaccio/streams';
-import { ErrorCode, normalizeDistTags, validateMetadata, isObject } from '@verdaccio/utils';
+import { ErrorCode, normalizeDistTags } from '@verdaccio/utils';
 import { ProxyList, IProxy } from '@verdaccio/proxy';
 import {
   IReadTarball,
@@ -28,10 +28,10 @@ import {
 } from '@verdaccio/types';
 import { hasProxyTo } from '@verdaccio/config';
 import { logger } from '@verdaccio/logger';
+import { pkgUtils, validatioUtils } from '@verdaccio/core';
 import { SearchInstance, SearchManager } from './search';
 
 import { LocalStorage } from './local-storage';
-import { mergeVersions } from './metadata-utils';
 import { setupUpLinks, updateVersionsHiddenUpLink } from './uplink-util';
 import {
   checkPackageLocal,
@@ -486,7 +486,7 @@ class Storage {
         const _options = Object.assign({}, options);
         const upLinkMeta = packageInfo._uplinks[upLink.upname];
 
-        if (isObject(upLinkMeta)) {
+        if (validatioUtils.isObject(upLinkMeta)) {
           const fetched = upLinkMeta.fetched;
 
           if (fetched && Date.now() - fetched < upLink.maxage) {
@@ -506,7 +506,7 @@ class Storage {
           }
 
           try {
-            validateMetadata(upLinkResponse, name);
+            validatioUtils.validateMetadata(upLinkResponse, name);
           } catch (err) {
             self.logger.error(
               {
@@ -528,7 +528,7 @@ class Storage {
           updateVersionsHiddenUpLink(upLinkResponse.versions, upLink);
 
           try {
-            mergeVersions(packageInfo, upLinkResponse);
+            pkgUtils.mergeVersions(packageInfo, upLinkResponse);
           } catch (err) {
             self.logger.error(
               {

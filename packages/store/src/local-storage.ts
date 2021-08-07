@@ -5,7 +5,7 @@ import _ from 'lodash';
 import buildDebug from 'debug';
 
 import { ErrorCode, isObject, getLatestVersion, validateName } from '@verdaccio/utils';
-import { searchUtils, pluginUtils } from '@verdaccio/core';
+import { searchUtils, pluginUtils, pkgUtils } from '@verdaccio/core';
 import { API_ERROR, DIST_TAGS, HTTP_STATUS, SUPPORT_ERRORS, USERS } from '@verdaccio/commons-api';
 import { createTarballHash } from '@verdaccio/utils';
 import { loadPlugin } from '@verdaccio/loaders';
@@ -32,7 +32,6 @@ import {
 import { VerdaccioError } from '@verdaccio/commons-api';
 
 import {
-  prepareSearchPackage,
   generatePackageTemplate,
   normalizePackage,
   generateRevision,
@@ -46,6 +45,31 @@ import {
 const debug = buildDebug('verdaccio:storage:local');
 
 export type IPluginStorage = pluginUtils.IPluginStorage<Config>;
+
+export function normalizeSearchPackage(pkg: Package): searchUtils.SearchPackageBody {
+  const latest = pkgUtils.getLatest(pkg);
+  const version: Version = pkg.versions[latest];
+  const result: searchUtils.SearchPackageBody = {
+    name: version.name,
+    scope: '',
+    description: version.description,
+    version: latest,
+    keywords: version.keywords,
+    date: pkg.time[latest],
+    author: version.author,
+    // FIXME: not possible fill this out from a private package
+    publisher: {},
+    maintainers: version.maintainers,
+    links: {
+      npm: '',
+      homepage: version.homepage,
+      repository: version.repository,
+      bugs: version.bugs,
+    },
+  };
+
+  return result;
+}
 
 /**
  * Implements Storage interface (same for storage.js, local-storage.js, up-storage.js).
@@ -675,7 +699,7 @@ class LocalStorage {
   public getPackageMetadata(name: string, callback: Callback = (): void => {}): void {
     const storage: IPackageStorage = this._getLocalStorage(name);
     debug('get package metadata for %o', name);
-    if (_.isNil(storage)) {
+    if (typeof storage === 'undefined') {
       return callback(ErrorCode.getNotFound());
     }
 
@@ -687,9 +711,9 @@ class LocalStorage {
     debug('search on each package');
     this.logger.info(
       { t: query.text, q: query.quality, p: query.popularity, m: query.maintenance, s: query.size },
-      'search by @{t}|@{s}|@{q}|@{p}'
+      'search by text @{t}| maintenance @{m}| quality @{q}| popularity @{p}'
     );
-    if (_.isNil(this.storagePlugin.search)) {
+    if (typeof this.storagePlugin.search === 'undefined') {
       this.logger.info('plugin search not implemented yet');
       stream.end();
       return stream;
@@ -697,17 +721,29 @@ class LocalStorage {
       const emitter = new searchUtils.SearchEmitter();
       emitter.on('package', (searchItem: searchUtils.SearchItem) => {
         const item = searchItem;
-        this.getPackageMetadata(item.name, (err: VerdaccioError, pkg: Package): void => {
+        this.getPackageMetadata(item?.package?.name, (err: VerdaccioError, pkg: Package): void => {
           if (err) {
-            this.logger.error({ err }, 'error on load package metaadata @{err.message}');
+            this.logger.error(
+              { err, pkgName: item?.package?.name },
+              'error on load package @{pkgName} metaadata @{err.message}'
+            );
             stream.emit('error', err);
           }
 
-          const result = prepareSearchPackage(pkg);
-          if (_.isNil(result) === false) {
-            stream.push(result);
-          }
+          const searchPackage = normalizeSearchPackage(pkg);
+          const searchPackageItem: searchUtils.SearchPackageItem = {
+            package: searchPackage,
+            score: searchItem.score,
+            flags: item?.flags,
+            // FUTURE: find a better way to calculate the score
+            searchScore: 1,
+          };
+          stream.push(searchPackageItem);
         });
+      });
+
+      emitter.once('error', () => {
+        stream.emit('error');
       });
 
       emitter.once('end', () => {
