@@ -1124,6 +1124,7 @@ importers:
       '@verdaccio/store': workspace:6.0.0-6-next.10
       '@verdaccio/ui-theme': workspace:6.0.0-6-next.9
       '@verdaccio/utils': workspace:6.0.0-6-next.5
+      async: 3.2.1
       verdaccio-audit: 11.0.0-alpha.4
       verdaccio-htpasswd: 11.0.0-alpha.6
     dependencies:
@@ -1141,6 +1142,7 @@ importers:
       '@verdaccio/commons-api': link:../core/commons-api
       '@verdaccio/config': link:../config
       '@verdaccio/store': link:../store
+      async: 3.2.1
 
   packages/web:
     specifiers:
@@ -6699,6 +6701,10 @@ packages:
 
   /async/3.2.0:
     resolution: {integrity: sha512-TR2mEZFVOj2pLStYxLht7TyfuRzaydfpxr3k9RpHIzMgw7A64dzsdqCxH1WJyQdoe8T10nDXd9wnEigmiuHIZw==}
+    dev: true
+
+  /async/3.2.1:
+    resolution: {integrity: sha512-XdD5lRO/87udXCMC9meWdYiR+Nq6ZjUfXidViUZGu2F1MO4T3XwZ1et0hb2++BgLfhyJwy44BGB/yx80ABx8hg==}
     dev: true
 
   /asynckit/0.4.0:

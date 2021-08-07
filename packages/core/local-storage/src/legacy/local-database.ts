@@ -3,7 +3,6 @@ import Path from 'path';
 import buildDebug from 'debug';
 
 import _ from 'lodash';
-import async from 'async';
 import {
   Callback,
   Config,
@@ -13,7 +12,7 @@ import {
   Logger,
   StorageList,
 } from '@verdaccio/types';
-import { errorUtils, validatioUtils } from '@verdaccio/core';
+import { errorUtils } from '@verdaccio/core';
 
 import { loadPrivatePackages } from '../pkg-utils';
 import TokenActions from '../token';
@@ -71,95 +70,14 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     }
   }
 
-  public search(onPackage: Callback, onEnd: Callback): void {
+  public search(_onPackage: Callback, onEnd: Callback): void {
     const storages = this._getCustomPackageLocalStorages();
     debug(`search custom local packages: %o`, JSON.stringify(storages));
     const base = Path.dirname(this.config.config_path);
-    const self = this;
     const storageKeys = Object.keys(storages);
     debug(`search base: %o keys: %o`, base, storageKeys);
 
-    async.eachSeries(
-      storageKeys,
-      function (storage, cb) {
-        const position = storageKeys.indexOf(storage);
-        const base2 = Path.join(position !== 0 ? storageKeys[0] : '');
-        const storagePath: string = Path.resolve(base, base2, storage);
-        debug('search path: %o : %o', storagePath, storage);
-        fs.readdir(storagePath, (err, files) => {
-          if (err) {
-            return cb(err);
-          }
-
-          async.eachSeries(
-            files,
-            function (file, cb) {
-              debug('local-storage: [search] search file path: %o', file);
-              if (storageKeys.includes(file)) {
-                return cb();
-              }
-
-              if (file.match(/^@/)) {
-                // scoped
-                const fileLocation = Path.resolve(base, storage, file);
-                debug('search scoped file location: %o', fileLocation);
-                fs.readdir(fileLocation, function (err, files) {
-                  if (err) {
-                    return cb(err);
-                  }
-
-                  async.eachSeries(
-                    files,
-                    (file2, cb) => {
-                      if (validatioUtils.validateName(file2)) {
-                        const packagePath = Path.resolve(base, storage, file, file2);
-
-                        fs.stat(packagePath, (err, stats) => {
-                          if (_.isNil(err) === false) {
-                            return cb(err);
-                          }
-                          const item = {
-                            name: `${file}/${file2}`,
-                            path: packagePath,
-                            time: stats.mtime.getTime(),
-                          };
-                          onPackage(item, cb);
-                        });
-                      } else {
-                        cb();
-                      }
-                    },
-                    cb
-                  );
-                });
-              } else if (validatioUtils.validateName(file)) {
-                const base2 = Path.join(position !== 0 ? storageKeys[0] : '');
-                const packagePath = Path.resolve(base, base2, storage, file);
-                debug('search file location: %o', packagePath);
-                fs.stat(packagePath, (err, stats) => {
-                  if (_.isNil(err) === false) {
-                    return cb(err);
-                  }
-                  onPackage(
-                    {
-                      name: file,
-                      path: packagePath,
-                      time: self.getTime(stats.mtime.getTime(), stats.mtime),
-                    },
-                    cb
-                  );
-                });
-              } else {
-                cb();
-              }
-            },
-            cb
-          );
-        });
-      },
-      // @ts-ignore
-      onEnd
-    );
+    onEnd(null, []);
   }
 
   public remove(name: string, cb: Callback): void {

@@ -50,7 +50,8 @@
     "@verdaccio/auth": "workspace:6.0.0-6-next.9",
     "@verdaccio/commons-api": "workspace:11.0.0-alpha.3",
     "@verdaccio/config": "workspace:6.0.0-6-next.7",
-    "@verdaccio/store": "workspace:6.0.0-6-next.10"
+    "@verdaccio/store": "workspace:6.0.0-6-next.10",
+    "async": "3.2.1"
   },
   "keywords": [
     "private",
