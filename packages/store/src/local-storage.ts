@@ -66,7 +66,9 @@ class LocalStorage {
   public async init() {
     if (this.storagePlugin === null) {
       this.storagePlugin = this._loadStorage(this.config, this.logger);
+      debug('storage plugin init');
       await this.storagePlugin.init();
+      debug('storage plugin initialized');
     } else {
       this.logger.warn('storage plugin has been already initialized');
     }
@@ -693,19 +695,18 @@ class LocalStorage {
       return stream;
     } else {
       const emitter = new searchUtils.SearchEmitter();
-      emitter.on('package', (searchItem: searchUtils.onPackageSearchItem) => {
-        const [item, cb] = searchItem;
+      emitter.on('package', (searchItem: searchUtils.SearchItem) => {
+        const item = searchItem;
         this.getPackageMetadata(item.name, (err: VerdaccioError, pkg: Package): void => {
           if (err) {
-            return cb(err);
+            this.logger.error({ err }, 'error on load package metaadata @{err.message}');
+            stream.emit('error', err);
           }
 
-          const time = new Date(item.time).toISOString();
-          const result = prepareSearchPackage(pkg, time);
+          const result = prepareSearchPackage(pkg);
           if (_.isNil(result) === false) {
             stream.push(result);
           }
-          cb(null);
         });
       });
 

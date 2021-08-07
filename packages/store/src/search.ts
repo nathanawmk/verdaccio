@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // eslint-disable no-invalid-this
 
 import { PassThrough, Transform } from 'stream';
@@ -306,7 +307,7 @@ class Search implements IWebSearch {
     const localStorage = this.storage.localStorage as LocalStorage;
 
     return query === '*'
-      ? (localStorage.storagePlugin as IPluginStorage<Config>).get((items): any => {
+      ? (localStorage.storagePlugin as any).get((items): any => {
           items.map(function (pkg): any {
             return { ref: pkg, score: 1 };
           });

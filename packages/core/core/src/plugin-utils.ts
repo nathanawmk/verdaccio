@@ -1,4 +1,4 @@
-import { Callback, Config, IPackageStorage, Logger, Token, TokenFilter } from '@verdaccio/types';
+import { Callback, Config, IPackageStorage, Token, TokenFilter } from '@verdaccio/types';
 import { searchUtils } from '.';
 
 interface IPlugin {
@@ -8,7 +8,6 @@ interface IPlugin {
 }
 
 export interface IPluginStorage<T> extends IPlugin {
-  logger: Logger;
   config: T & Config;
   add(name: string, callback: Callback): void;
   remove(name: string, callback: Callback): void;
@@ -17,7 +16,7 @@ export interface IPluginStorage<T> extends IPlugin {
   getSecret(): Promise<string>;
   setSecret(secret: string): Promise<any>;
   getPackageStorage(packageInfo: string): IPackageStorage;
-  search(emitter: searchUtils.SearchEmitter, query: searchUtils.SearchQuery): void;
+  search(emitter: searchUtils.SearchEmitter, query: searchUtils.SearchQuery): Promise<void>;
   saveToken(token: Token): Promise<any>;
   deleteToken(user: string, tokenKey: string): Promise<any>;
   readTokens(filter: TokenFilter): Promise<Token[]>;

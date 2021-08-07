@@ -414,10 +414,10 @@ importers:
       '@verdaccio/streams': workspace:11.0.0-alpha.3
       '@verdaccio/types': workspace:11.0.0-6-next.7
       '@verdaccio/utils': workspace:6.0.0-6-next.5
-      async: ^3.2.0
-      debug: ^4.3.1
-      lodash: ^4.17.21
+      debug: 4.3.1
+      lodash: 4.17.21
       lowdb: 1.0.0
+      lru-cache: 6.0.0
       minimatch: ^3.0.4
       rmdir-sync: ^1.0.1
     dependencies:
@@ -426,10 +426,10 @@ importers:
       '@verdaccio/file-locking': link:../file-locking
       '@verdaccio/streams': link:../streams
       '@verdaccio/utils': link:../../utils
-      async: 3.2.0
       debug: 4.3.1
       lodash: 4.17.21
       lowdb: 1.0.0
+      lru-cache: 6.0.0
     devDependencies:
       '@types/minimatch': 3.0.3
       '@verdaccio/types': link:../types
@@ -6697,6 +6697,7 @@ packages:
 
   /async/3.2.0:
     resolution: {integrity: sha512-TR2mEZFVOj2pLStYxLht7TyfuRzaydfpxr3k9RpHIzMgw7A64dzsdqCxH1WJyQdoe8T10nDXd9wnEigmiuHIZw==}
+    dev: true
 
   /asynckit/0.4.0:
     resolution: {integrity: sha1-x57Zf380y48robyXkLzDZkdLS3k=}

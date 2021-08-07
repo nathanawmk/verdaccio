@@ -10,6 +10,7 @@ declare module '@verdaccio/types' {
   // FIXME: err should be something flexible enough for any implementation
   type CallbackAction = (err: any | null) => void;
   interface Author {
+    username?: string;
     name: string;
     email?: string;
     url?: string;

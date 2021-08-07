@@ -228,7 +228,7 @@ export function mergeUplinkTimeIntoLocal(localMetadata: Package, remoteMetadata:
   return localMetadata.time;
 }
 
-export function prepareSearchPackage(data: Package, time: unknown): any {
+export function prepareSearchPackage(data: Package): any {
   const listVersions: string[] = Object.keys(data.versions);
   const versions: string[] = semverSort(listVersions);
   const latest: string | undefined = data[DIST_TAGS]?.latest
@@ -250,9 +250,9 @@ export function prepareSearchPackage(data: Package, time: unknown): any {
       keywords: version.keywords,
       bugs: version.bugs,
       license: version.license,
-      time: {
-        modified: time,
-      },
+      // time: {
+      //   modified: time,
+      // },
       versions,
     };
 

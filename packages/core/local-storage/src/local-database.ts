@@ -1,31 +1,33 @@
-import fs from 'fs';
-import Path from 'path';
-import { mkdir } from 'fs/promises';
+import path from 'path';
+// import LRU from 'lru-cache';
 import buildDebug from 'debug';
 import _ from 'lodash';
-import async from 'async';
-import { Config, IPackageStorage, IPluginStorage, LocalStorage, Logger } from '@verdaccio/types';
-import { errorUtils, validatioUtils, searchUtils } from '@verdaccio/core';
+import { Config, IPackageStorage, LocalStorage, Logger } from '@verdaccio/types';
+import { errorUtils, searchUtils, pluginUtils, fileUtils } from '@verdaccio/core';
 import { getMatchedPackagesSpec } from '@verdaccio/utils';
 
 import LocalDriver, { noSuchFile } from './local-fs';
 import { loadPrivatePackages } from './pkg-utils';
 import TokenActions from './token';
+import { mkdirPromise, writeFilePromise } from './fs';
+import { searchOnStorage } from './dir-utils';
 import { _dbGenPath } from './utils';
-import { writeFilePromise } from './fs';
 
-const DB_NAME = '.verdaccio-db.json';
+const DB_NAME = process.env.VERDACCIO_STORAGE_NAME ?? fileUtils.Files.DatabaseName;
 
 const debug = buildDebug('verdaccio:plugin:local-storage:experimental');
 
 export const ERROR_DB_LOCKED =
   'Database is locked, please check error message printed during startup to prevent data loss';
 
-class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
-  public path: string;
-  public logger: Logger;
+type IPluginStorage = pluginUtils.IPluginStorage<{}>;
+
+class LocalDatabase extends TokenActions implements IPluginStorage {
+  private readonly path: string;
+  private readonly logger: Logger;
+  public readonly config: Config;
+  public readonly storages: Map<string, string>;
   public data: LocalStorage | void;
-  public config: Config;
   public locked: boolean;
 
   public constructor(config: Config, logger: Logger) {
@@ -35,12 +37,14 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     this.locked = false;
     this.data = undefined;
     this.path = _dbGenPath(DB_NAME, config);
+    this.storages = this._getCustomPackageLocalStorages();
     debug('plugin storage path %o', this.path);
   }
 
   public async init(): Promise<void> {
     debug('plugin init');
     this.data = await this._fetchLocalPackages();
+    debug('local packages loaded');
     await this._sync();
   }
 
@@ -77,96 +81,41 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     }
   }
 
-  public search(emitter: searchUtils.SearchEmitter, query: searchUtils.SearchQuery): void {
-    const storages = this._getCustomPackageLocalStorages();
-    debug(`search custom local packages: %o`, JSON.stringify(storages));
-    const base = Path.dirname(this.config.config_path);
-    const self = this;
-    const storageKeys = Object.keys(storages);
-    debug(`search base: %o keys: %o`, base, storageKeys);
+  /**
+   * The field storage could be absolute or relative.
+   * If relative, it will be resolved against the config path.
+   * If absolute, it will be returned as is.
+   *
+   **/
+  private getStoragePath() {
+    const { storage } = this.config;
+    if (typeof storage !== 'string') {
+      throw new TypeError('storage field is mandatory');
+    }
 
-    async.eachSeries(
-      storageKeys,
-      function (storage, cb) {
-        const position = storageKeys.indexOf(storage);
-        const base2 = Path.join(position !== 0 ? storageKeys[0] : '');
-        const storagePath: string = Path.resolve(base, base2, storage);
-        debug('search path: %o : %o', storagePath, storage);
-        fs.readdir(storagePath, (err, files) => {
-          if (err) {
-            return cb(err);
-          }
+    const storagePath = path.isAbsolute(storage)
+      ? storage
+      : path.normalize(path.join(this.getBaseConfigPath(), storage));
+    debug('storage path %o', storagePath);
+    return storagePath;
+  }
 
-          async.eachSeries(
-            files,
-            function (file, cb) {
-              debug('local-storage: [search] search file path: %o', file);
-              if (storageKeys.includes(file)) {
-                return cb();
-              }
+  private getBaseConfigPath(): string {
+    return path.dirname(this.config.config_path);
+  }
 
-              if (file.match(/^@/)) {
-                // scoped
-                const fileLocation = Path.resolve(base, storage, file);
-                debug('search scoped file location: %o', fileLocation);
-                fs.readdir(fileLocation, function (err, files) {
-                  if (err) {
-                    return cb(err);
-                  }
+  public async search(
+    emitter: searchUtils.SearchEmitter,
+    query: searchUtils.SearchQuery
+  ): Promise<void> {
+    const storagePath = this.getStoragePath();
+    const packagesOnStorage = await searchOnStorage(storagePath, this.storages, query);
+    debug('packages found %o', packagesOnStorage.length);
+    for (let storage of packagesOnStorage) {
+      emitter.addPackage(storage);
+    }
 
-                  async.eachSeries(
-                    files,
-                    (file2, cb) => {
-                      if (validatioUtils.validateName(file2)) {
-                        const packagePath = Path.resolve(base, storage, file, file2);
-
-                        fs.stat(packagePath, (err, stats) => {
-                          if (err) {
-                            return cb(err);
-                          }
-                          const item = {
-                            name: `${file}/${file2}`,
-                            path: packagePath,
-                            time: stats.mtime.getTime(),
-                          };
-                          emitter.addPackage([item, cb]);
-                        });
-                      } else {
-                        cb();
-                      }
-                    },
-                    cb
-                  );
-                });
-              } else if (validatioUtils.validateName(file)) {
-                const base2 = Path.join(position !== 0 ? storageKeys[0] : '');
-                const packagePath = Path.resolve(base, base2, storage, file);
-                debug('search file location: %o', packagePath);
-                fs.stat(packagePath, (err, stats) => {
-                  if (_.isNil(err) === false) {
-                    return cb(err);
-                  }
-                  emitter.addPackage([
-                    {
-                      name: file,
-                      path: packagePath,
-                      time: self.getTime(stats.mtime.getTime(), stats.mtime),
-                    },
-                    cb,
-                  ]);
-                });
-              } else {
-                cb();
-              }
-            },
-            cb
-          );
-        });
-      },
-      () => {
-        emitter.end();
-      }
-    );
+    emitter.end();
   }
 
   public async remove(name: string): Promise<void> {
@@ -212,8 +161,9 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
       return;
     }
 
-    const packageStoragePath: string = Path.join(
-      Path.resolve(Path.dirname(this.config.config_path || ''), packagePath),
+    const packageStoragePath: string = path.join(
+      // FIXME: use getBaseStoragePath instead
+      path.resolve(path.dirname(this.config.config_path || ''), packagePath),
       packageName
     );
 
@@ -230,23 +180,17 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     return time ? time : mtime;
   }
 
-  private _getCustomPackageLocalStorages(): object {
-    const storages = {};
-
-    // add custom storage if exist
-    if (this.config.storage) {
-      storages[this.config.storage] = true;
-    }
-
+  private _getCustomPackageLocalStorages(): Map<string, string> {
+    const storages = new Map<string, string>();
     const { packages } = this.config;
 
     if (packages) {
-      const listPackagesConf = Object.keys(packages || {});
-
-      listPackagesConf.map((pkg) => {
-        const storage = packages[pkg].storage;
-        if (storage) {
-          storages[storage] = false;
+      Object.keys(packages || {}).map((pkg) => {
+        const { storage } = packages[pkg];
+        if (typeof storage === 'string') {
+          const storagePath = path.join(this.getStoragePath(), storage);
+          debug('add custom storage for %s on %s', storage, storagePath);
+          storages.set(storage, storagePath);
         }
       });
     }
@@ -254,22 +198,22 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     return storages;
   }
 
-  private async _sync(): Promise<Error | null> {
+  private async _sync(): Promise<null> {
     debug('sync database started');
 
     if (this.locked) {
       this.logger.error(ERROR_DB_LOCKED);
-      return new Error(ERROR_DB_LOCKED);
+      throw new Error(ERROR_DB_LOCKED);
     }
     // Uses sync to prevent ugly race condition
     try {
-      const folderName = Path.dirname(this.path);
+      const folderName = path.dirname(this.path);
       debug('creating folder %o', folderName);
-      await mkdir(folderName, { recursive: true });
+      await mkdirPromise(folderName, { recursive: true });
       debug('creating folder %o created succeed', folderName);
     } catch (err) {
       this.logger.error({ err }, 'sync create folder has failed with error: @{err}');
-      return null;
+      throw err;
     }
 
     try {
@@ -278,20 +222,19 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
 
       return null;
     } catch (err) {
-      console.error('er-->', err);
       this.logger.error({ err }, 'sync database file failed: @{err}');
-      return err;
+      throw err;
     }
   }
 
   private _getLocalStoragePath(storage: string | void): string {
-    const globalConfigStorage = this.config ? this.config.storage : undefined;
+    const globalConfigStorage = this.getStoragePath();
     if (_.isNil(globalConfigStorage)) {
       this.logger.error('property storage in config.yaml is required for using  this plugin');
       throw new Error('property storage in config.yaml is required for using  this plugin');
     } else {
       if (typeof storage === 'string') {
-        return Path.join(globalConfigStorage as string, storage as string);
+        return path.join(globalConfigStorage as string, storage as string);
       }
 
       return globalConfigStorage as string;
@@ -304,7 +247,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage<{}> {
     } catch (err) {
       // readFileSync is platform specific, macOS, Linux and Windows thrown an error
       // Only recreate if file not found to prevent data loss
-      debug('error on fetch local packages %o', err);
+      this.logger.error({ err }, 'error on fetch local packages @{err}');
       if (err.code !== noSuchFile) {
         this.locked = true;
         this.logger.error(

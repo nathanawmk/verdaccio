@@ -35,7 +35,7 @@ describe('proxy', () => {
     nock.cleanAll();
   });
   const defaultRequestOptions = {
-    url: 'https://registry.npmjs.org',
+    url: domain,
   };
   const proxyPath = getConf('proxy1.yaml');
   const conf = new Config(parseConfigFile(proxyPath));
