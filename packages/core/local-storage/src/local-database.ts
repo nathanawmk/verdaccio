@@ -104,10 +104,23 @@ class LocalDatabase extends TokenActions implements IPluginStorage {
     return path.dirname(this.config.config_path);
   }
 
+  /**
+   * Filter by query.
+   **/
+  public async filterByQuery(results: searchUtils.SearchItemPkg[], query: searchUtils.SearchQuery) {
+    // FUTURE: apply new filters, keyword, version, ...
+    return results.filter((item: searchUtils.SearchItemPkg) => {
+      return item?.name?.match(query.text) !== null;
+    }) as searchUtils.SearchItemPkg[];
+  }
+
   public async search(query: searchUtils.SearchQuery): Promise<searchUtils.SearchItem[]> {
     const results: searchUtils.SearchItem[] = [];
     const storagePath = this.getStoragePath();
-    const packagesOnStorage = await searchOnStorage(storagePath, this.storages, query);
+    const packagesOnStorage = await this.filterByQuery(
+      await searchOnStorage(storagePath, this.storages),
+      query
+    );
     debug('packages found %o', packagesOnStorage.length);
     for (let storage of packagesOnStorage) {
       results.push({

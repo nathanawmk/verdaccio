@@ -46,7 +46,10 @@ const debug = buildDebug('verdaccio:storage:local');
 
 export type IPluginStorage = pluginUtils.IPluginStorage<Config>;
 
-export function normalizeSearchPackage(pkg: Package): searchUtils.SearchPackageBody {
+export function normalizeSearchPackage(
+  pkg: Package,
+  searchItem: searchUtils.SearchItem
+): searchUtils.SearchPackageBody {
   const latest = pkgUtils.getLatest(pkg);
   const version: Version = pkg.versions[latest];
   const result: searchUtils.SearchPackageBody = {
@@ -69,6 +72,10 @@ export function normalizeSearchPackage(pkg: Package): searchUtils.SearchPackageB
       bugs: version.bugs,
     },
   };
+
+  if (typeof searchItem.package.scoped === 'string') {
+    result.scope = searchItem.package.scoped;
+  }
 
   return result;
 }
@@ -727,7 +734,7 @@ class LocalStorage {
               reject(err);
             }
 
-            const searchPackage = normalizeSearchPackage(pkg);
+            const searchPackage = normalizeSearchPackage(pkg, searchItem);
             const searchPackageItem: searchUtils.SearchPackageItem = {
               package: searchPackage,
               score: searchItem.score,

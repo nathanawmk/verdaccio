@@ -2,6 +2,10 @@ import assert from 'assert';
 import { Package } from '@verdaccio/types';
 import { DIST_TAGS } from './constants';
 
+export function isPackageNameScoped(name: string): boolean {
+  return name.startsWith('@');
+}
+
 /**
  * From normalize-package-data/lib/fixer.js
  * @param {*} name  the package name
@@ -11,9 +15,10 @@ export function validateName(name: string): boolean {
   if (typeof name !== 'string') {
     return false;
   }
+  
   let normalizedName: string = name.toLowerCase();
 
-  const isScoped: boolean = name.startsWith('@') && name.includes('/');
+  const isScoped: boolean = isPackageNameScoped(name);
   const scopedName = name.split('/', 2)[1];
 
   if (isScoped && typeof scopedName !== 'undefined') {

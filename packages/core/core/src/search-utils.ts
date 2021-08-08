@@ -11,7 +11,8 @@ export type UnStable = {
 };
 export type SearchItemPkg = {
   name: string;
-  path: string;
+  scoped?: string;
+  path?: string;
   time?: number | Date;
 };
 export type SearchItem = {
@@ -57,6 +58,6 @@ export const UNSCOPED = 'unscoped';
 
 export type SearchQuery = {
   text: string;
-  size: number;
-  from: string;
+  size?: number;
+  from?: number;
 } & SearchMetrics;

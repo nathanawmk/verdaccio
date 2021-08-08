@@ -150,7 +150,6 @@ export default function (route, auth: IAuth, storage: Storage): void {
     });
 
     outPutStream.on('data', (chunk) => {
-      debug('push stream data');
       data.push(chunk);
     });
 

@@ -1,30 +1,34 @@
-import { resolve, join, posix } from 'path';
+import { join } from 'path';
+import globby from 'globby';
 import buildDebug from 'debug';
 import { searchUtils, validatioUtils } from '@verdaccio/core';
-import { readdirPromise } from './fs';
 
 const debug = buildDebug('verdaccio:plugin:local-storage:utils');
-
-export async function readDirectory(storagePath) {
-  await readdirPromise(storagePath, {
-    withFileTypes: true,
-  });
-}
 
 /**
  * Retrieve a list of absolute paths to all folders in the given storage path
  * @param storagePath the base path of the storage
  * @return a promise that resolves to an array of absolute paths
  */
-export async function getFolders(storagePath): Promise<string[]> {
-  const dirents = await readdirPromise(storagePath, { withFileTypes: true });
-  const files = await Promise.all(
-    dirents.map((dirent) => {
-      const res = resolve(storagePath, dirent.name);
-      return dirent.isDirectory() ? getFolders(res) : storagePath;
-    })
-  );
-  return Array.prototype.concat(...files);
+export async function getFolders(storagePath: string, pattern = '*'): Promise<string[]> {
+  // @ts-ignore - check why this fails, types are correct
+  const files = await globby(pattern, {
+    // @ts-ignore
+    cwd: storagePath,
+    expandDirectories: true,
+    onlyDirectories: true,
+    onlyFiles: false,
+    // should not go deeper than the storage path (10 is reseaon for the storage))
+    deep: 10,
+    dot: false,
+    followSymbolicLinks: true,
+    caseSensitiveMatch: true,
+    unique: true,
+    // FIXME: add here list of forbiden patterns
+    // don't include scoped folders.
+    // ignore: [`@*`],
+  });
+  return files;
 }
 
 /**
@@ -55,40 +59,57 @@ export async function getFolders(storagePath): Promise<string[]> {
  */
 export async function searchOnStorage(
   storagePath: string,
-  storages: Map<string, string>,
-  query: searchUtils.SearchQuery
+  storages: Map<string, string>
 ): Promise<searchUtils.SearchItemPkg[]> {
-  const results: any[] = [];
-  const matchedStorages = Array.from(storages).map(([key]) => {
-    const path = join(storagePath, key, posix.sep);
-    return path;
-  });
+  const matchedStorages = Array.from(storages);
+  const storageFolders = Array.from(storages.keys());
+  // const getScopedFolders = async (pkgName) => {
+  //   const scopedPackages = await getFolders(join(storagePath, pkgName), '*');
+  //   const listScoped = scopedPackages.map((scoped) => ({
+  //     name: `${pkgName}/${scoped}`,
+  //   }));
+  // };
   debug('search on %o', storagePath);
   debug('storage folders %o', matchedStorages.length);
-  const foldersOnStorage = await getFolders(storagePath);
-  debug('folders on storage %o', foldersOnStorage.length);
-  for (let store of foldersOnStorage) {
-    const isStorage = matchedStorages.findIndex((storage) => store.match(storage));
-    if (isStorage === -1) {
-      const pkgName = store.replace(join(storagePath, posix.sep), '');
-      if (validatioUtils.validateName(pkgName)) {
-        results.push({
-          name: pkgName,
-          path: store,
-        });
-      }
+  let results: searchUtils.SearchItemPkg[] = [];
+  // watch base path and ignore storage folders
+  const basePathFolders = (await getFolders(storagePath, '*')).filter(
+    (storageFolder) => !storageFolders.includes(storageFolder)
+  );
+
+  for (let store of basePathFolders) {
+    if (validatioUtils.isPackageNameScoped(store)) {
+      const scopedPackages = await getFolders(join(storagePath, store), '*');
+      const listScoped = scopedPackages.map((scoped) => ({
+        name: `${store}/${scoped}`,
+        scoped: store,
+      }));
+      results.push(...listScoped);
     } else {
-      const pkgName = store.replace(matchedStorages[isStorage], '');
-      if (validatioUtils.validateName(pkgName)) {
+      results.push({
+        name: store,
+      });
+    }
+  }
+
+  // iterate each storage folder
+  for (const store of storageFolders) {
+    const foldersOnStorage = await getFolders(join(storagePath, store), '*');
+    for (let pkgName of foldersOnStorage) {
+      if (validatioUtils.isPackageNameScoped(pkgName)) {
+        const scopedPackages = await getFolders(join(storagePath, store, pkgName), '*');
+        const listScoped = scopedPackages.map((scoped) => ({
+          name: `${pkgName}/${scoped}`,
+          scoped: pkgName,
+        }));
+        results.push(...listScoped);
+      } else {
         results.push({
           name: pkgName,
-          path: store,
         });
       }
     }
   }
 
-  return results.filter((item: searchUtils.SearchItemPkg) => {
-    return item?.name?.match(query.text) !== null;
-  }) as searchUtils.SearchItemPkg[];
+  return results;
 }
