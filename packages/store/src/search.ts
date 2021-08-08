@@ -1,185 +1,24 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 // eslint-disable no-invalid-this
 
-import { PassThrough, Transform } from 'stream';
+import { PassThrough } from 'stream';
 import lunr from 'lunr';
 import lunrMutable from 'lunr-mutable-indexes';
 import _ from 'lodash';
+import buildDebug from 'debug';
 import { logger } from '@verdaccio/logger';
-import { Version, IPluginStorage, Config, Package } from '@verdaccio/types';
+import { Version } from '@verdaccio/types';
 import { IProxy, ProxyList, ProxySearchParams } from '@verdaccio/proxy';
 import { VerdaccioError } from '@verdaccio/commons-api';
 import { searchUtils } from '@verdaccio/core';
 import { LocalStorage } from './local-storage';
 import { Storage } from './storage';
+
+const debug = buildDebug('verdaccio:storage:search');
 export interface ISearchResult {
   ref: string;
   score: number;
 }
-
-type PublisherMaintainer = {
-  username: string;
-  email: string;
-};
-
-type PackageResults = {
-  name: string;
-  scope: string;
-  version: string;
-  description: string;
-  date: string;
-  links: {
-    npm: string;
-    homepage?: string;
-    repository?: string;
-    bugs?: string;
-  };
-  author: { name: string };
-  publisher: PublisherMaintainer;
-  maintainer: PublisherMaintainer;
-};
-
-type SearchResult = {
-  package: PackageResults;
-  flags?: { unstable: boolean | void };
-  local?: boolean;
-  score: {
-    final: number;
-    detail: {
-      quality: number;
-      popularity: number;
-      maintenance: number;
-    };
-  };
-  searchScore: number;
-};
-
-type SearchResults = {
-  objects: SearchResult[];
-  total: number;
-  time: string;
-};
-
-const personMatch = (person, search) => {
-  if (typeof person === 'string') {
-    return person.includes(search);
-  }
-
-  if (typeof person === 'object') {
-    for (const field of Object.values(person)) {
-      if (typeof field === 'string' && field.includes(search)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-};
-
-const matcher = function (query) {
-  const match = query.match(/author:(.*)/);
-  if (match !== null) {
-    return function (pkg) {
-      return personMatch(pkg.author, match[1]);
-    };
-  }
-
-  // TODO: maintainer, keywords, boost-exact
-  // TODO implement some scoring system for freetext
-  return (pkg) => {
-    return ['name', 'displayName', 'description']
-      .map((k) => {
-        return pkg[k];
-      })
-      .filter((x) => {
-        return x !== undefined;
-      })
-      .some((txt) => {
-        return txt.includes(query);
-      });
-  };
-};
-
-function compileTextSearch(textSearch: string): (pkg: PackageResults) => boolean {
-  const textMatchers = (textSearch || '').split(' ').map(matcher);
-  return (pkg) => textMatchers.every((m) => m(pkg));
-}
-
-function removeDuplicates(results) {
-  const pkgNames: any[] = [];
-  return results.filter((pkg) => {
-    if (pkgNames.includes(pkg?.package?.name)) {
-      return false;
-    }
-    pkgNames.push(pkg?.package?.name);
-    return true;
-  });
-}
-
-function checkAccess(pkg: any, auth: any, remoteUser): Promise<Package | null> {
-  return new Promise((resolve, reject) => {
-    auth.allow_access({ packageName: pkg?.package?.name }, remoteUser, function (err, allowed) {
-      if (err) {
-        if (err.status && String(err.status).match(/^4\d\d$/)) {
-          // auth plugin returns 4xx user error,
-          // that's equivalent of !allowed basically
-          allowed = false;
-          return resolve(null);
-        } else {
-          reject(err);
-        }
-      } else {
-        return resolve(allowed ? pkg : null);
-      }
-    });
-  });
-}
-
-class TransFormResults extends Transform {
-  private text: string;
-  // FIXME: this type is not correct,
-  private logger: any;
-  public constructor(text, logger, options) {
-    super(options);
-    this.text = text;
-    this.logger = logger;
-  }
-
-  /**
-   * Transform either array of packages or a single package into a stream of packages.
-   * From uplinks the chunks are array but from local packages are objects.
-   * @param {string} chunk
-   * @param {string} encoding
-   * @param {function} done
-   * @returns {void}
-   * @override
-   */
-  public _transform(chunk, _encoding, callback) {
-    const isInteresting = compileTextSearch(this.text);
-    if (_.isArray(chunk)) {
-      (chunk as SearchResult[])
-        .filter((pkgItem) => {
-          if (!isInteresting(pkgItem?.package)) {
-            return;
-          }
-          logger.info(`[remote] streaming name ${pkgItem?.package?.name}`);
-          return true;
-        })
-        .forEach((pkgItem) => {
-          this.push(pkgItem);
-        });
-      return callback();
-    } else {
-      if (!isInteresting(chunk)) {
-        return callback();
-      }
-      logger.info(`[local] streaming pkg name ${(chunk as PackageResults)?.name}`);
-      this.push(chunk);
-      return callback();
-    }
-  }
-}
-
 export interface IWebSearch {
   index: lunrMutable.index;
   storage: Storage;
@@ -219,20 +58,17 @@ export class SearchManager {
     });
 
     try {
+      debug('search uplinks');
       await Promise.all([...searchUplinksStreams]);
+      debug('search uplinks done');
     } catch (err) {
       logger.error({ err }, ' error on uplinks search @{err}');
       searchPassThrough.emit('error', err);
       throw err;
     }
-
-    const localStream = this.storage.search(options.query as searchUtils.SearchQuery);
-    // we close the stream
-    localStream.pipe(searchPassThrough, { end: true });
-    localStream.on('error', (err: VerdaccioError): void => {
-      logger.error({ err: err }, 'search error: @{err?.message}');
-      searchPassThrough.end();
-    });
+    debug('search local');
+    await this.storage.search(searchPassThrough, options.query as searchUtils.SearchQuery);
+    debug('search done');
   }
 
   /**

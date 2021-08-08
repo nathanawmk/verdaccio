@@ -16,7 +16,7 @@ export interface IPluginStorage<T> extends IPlugin {
   getSecret(): Promise<string>;
   setSecret(secret: string): Promise<any>;
   getPackageStorage(packageInfo: string): IPackageStorage;
-  search(emitter: searchUtils.SearchEmitter, query: searchUtils.SearchQuery): Promise<void>;
+  search(query: searchUtils.SearchQuery): Promise<searchUtils.SearchItem[]>;
   saveToken(token: Token): Promise<any>;
   deleteToken(user: string, tokenKey: string): Promise<any>;
   readTokens(filter: TokenFilter): Promise<Token[]>;

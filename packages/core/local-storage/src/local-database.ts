@@ -104,15 +104,13 @@ class LocalDatabase extends TokenActions implements IPluginStorage {
     return path.dirname(this.config.config_path);
   }
 
-  public async search(
-    emitter: searchUtils.SearchEmitter,
-    query: searchUtils.SearchQuery
-  ): Promise<void> {
+  public async search(query: searchUtils.SearchQuery): Promise<searchUtils.SearchItem[]> {
+    const results: searchUtils.SearchItem[] = [];
     const storagePath = this.getStoragePath();
     const packagesOnStorage = await searchOnStorage(storagePath, this.storages, query);
     debug('packages found %o', packagesOnStorage.length);
     for (let storage of packagesOnStorage) {
-      emitter.addPackage({
+      results.push({
         package: storage,
         score: {
           final: 1,
@@ -124,8 +122,7 @@ class LocalDatabase extends TokenActions implements IPluginStorage {
         },
       });
     }
-
-    emitter.end();
+    return results;
   }
 
   public async remove(name: string): Promise<void> {

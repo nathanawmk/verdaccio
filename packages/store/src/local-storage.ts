@@ -706,54 +706,57 @@ class LocalStorage {
     this._readPackage(name, storage, callback);
   }
 
-  public search(query: searchUtils.SearchQuery): PassThrough {
-    const stream = new PassThrough({ objectMode: true });
+  public async search(searchStream: PassThrough, query: searchUtils.SearchQuery): Promise<void> {
     debug('search on each package');
     this.logger.info(
       { t: query.text, q: query.quality, p: query.popularity, m: query.maintenance, s: query.size },
       'search by text @{t}| maintenance @{m}| quality @{q}| popularity @{p}'
     );
+    const getMetadata = (searchItem: searchUtils.SearchItem) => {
+      return new Promise((resolve, reject) => {
+        this.getPackageMetadata(
+          searchItem?.package?.name,
+          (err: VerdaccioError, pkg: Package): void => {
+            if (err) {
+              this.logger.error(
+                { err, pkgName: searchItem?.package?.name },
+                'error on load package @{pkgName} metaadata @{err.message}'
+              );
+              reject(err);
+            }
+
+            const searchPackage = normalizeSearchPackage(pkg);
+            const searchPackageItem: searchUtils.SearchPackageItem = {
+              package: searchPackage,
+              score: searchItem.score,
+              flags: searchItem?.flags,
+              // FUTURE: find a better way to calculate the score
+              searchScore: 1,
+            };
+            debug('push to stream %o', searchItem?.package?.name);
+            resolve(searchPackageItem);
+          }
+        );
+      });
+    };
+
     if (typeof this.storagePlugin.search === 'undefined') {
       this.logger.info('plugin search not implemented yet');
-      stream.end();
-      return stream;
+      searchStream.end();
     } else {
-      const emitter = new searchUtils.SearchEmitter();
-      emitter.on('package', (searchItem: searchUtils.SearchItem) => {
-        const item = searchItem;
-        this.getPackageMetadata(item?.package?.name, (err: VerdaccioError, pkg: Package): void => {
-          if (err) {
-            this.logger.error(
-              { err, pkgName: item?.package?.name },
-              'error on load package @{pkgName} metaadata @{err.message}'
-            );
-            stream.emit('error', err);
-          }
-
-          const searchPackage = normalizeSearchPackage(pkg);
-          const searchPackageItem: searchUtils.SearchPackageItem = {
-            package: searchPackage,
-            score: searchItem.score,
-            flags: item?.flags,
-            // FUTURE: find a better way to calculate the score
-            searchScore: 1,
-          };
-          stream.push(searchPackageItem);
-        });
-      });
-
-      emitter.once('error', () => {
-        stream.emit('error');
-      });
-
-      emitter.once('end', () => {
-        stream.end();
-      });
-
       debug('search on each package by plugin');
-      this.storagePlugin.search(emitter, query);
-
-      return stream;
+      const items = await this.storagePlugin.search(query);
+      try {
+        for (const item of items) {
+          const metadata = await getMetadata(item);
+          searchStream.write(metadata);
+        }
+        debug('search local stream end');
+        searchStream.end();
+      } catch (err) {
+        this.logger.error({ err, query }, 'error on search by plugin @{err.message}');
+        searchStream.emit('error', err);
+      }
     }
   }
 

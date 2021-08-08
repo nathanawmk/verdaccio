@@ -1,11 +1,13 @@
 import { Transform, pipeline, PassThrough } from 'stream';
 import _ from 'lodash';
-import semver from 'semver';
+import buildDebug from 'debug';
 import { Package } from '@verdaccio/types';
 import { logger } from '@verdaccio/logger';
 import { IAuth } from '@verdaccio/auth';
 import { HTTP_STATUS, getInternalError } from '@verdaccio/commons-api';
 import { Storage } from '@verdaccio/store';
+
+const debug = buildDebug('verdaccio:api:search');
 
 type PublisherMaintainer = {
   username: string;
@@ -50,50 +52,45 @@ type SearchResults = {
   time: string;
 };
 
-const personMatch = (person, search) => {
-  if (typeof person === 'string') {
-    return person.includes(search);
-  }
+// const personMatch = (person, search) => {
+//   if (typeof person === 'string') {
+//     return person.includes(search);
+//   }
 
-  if (typeof person === 'object') {
-    for (const field of Object.values(person)) {
-      if (typeof field === 'string' && field.includes(search)) {
-        return true;
-      }
-    }
-  }
+//   if (typeof person === 'object') {
+//     for (const field of Object.values(person)) {
+//       if (typeof field === 'string' && field.includes(search)) {
+//         return true;
+//       }
+//     }
+//   }
 
-  return false;
-};
+//   return false;
+// };
 
-const matcher = function (query) {
-  const match = query.match(/author:(.*)/);
-  if (match !== null) {
-    return function (pkg) {
-      return personMatch(pkg.author, match[1]);
-    };
-  }
+// const matcher = function (query) {
+//   const match = query.match(/author:(.*)/);
+//   if (match !== null) {
+//     return function (pkg) {
+//       return personMatch(pkg.author, match[1]);
+//     };
+//   }
 
-  // TODO: maintainer, keywords, boost-exact
-  // TODO implement some scoring system for freetext
-  return (pkg) => {
-    return ['name', 'displayName', 'description']
-      .map((k) => {
-        return pkg[k];
-      })
-      .filter((x) => {
-        return x !== undefined;
-      })
-      .some((txt) => {
-        return txt.includes(query);
-      });
-  };
-};
-
-function compileTextSearch(textSearch: string): (pkg: PackageResults) => boolean {
-  const textMatchers = (textSearch || '').split(' ').map(matcher);
-  return (pkg) => textMatchers.every((m) => m(pkg));
-}
+//   // TODO: maintainer, keywords, boost-exact
+//   // TODO implement some scoring system for freetext
+//   return (pkg) => {
+//     return ['name', 'displayName', 'description']
+//       .map((k) => {
+//         return pkg[k];
+//       })
+//       .filter((x) => {
+//         return x !== undefined;
+//       })
+//       .some((txt) => {
+//         return txt.includes(query);
+//       });
+//   };
+// };
 
 function removeDuplicates(results) {
   const pkgNames: any[] = [];
@@ -125,42 +122,9 @@ function checkAccess(pkg: any, auth: any, remoteUser): Promise<Package | null> {
   });
 }
 
-// async function sendResponse(
-//   resultBuf,
-//   resultStream,
-//   auth,
-//   req,
-//   from: number,
-//   size: number
-// ): Promise<SearchResults> {
-//   resultStream.destroy();
-//   const checkAccessPromises: SearchResult[] = await Promise.all(
-//     removeDuplicates(resultsCollection).map((pkgItem) => {
-//       return checkAccess(pkgItem, auth, req.remote_user);
-//     })
-//   );
-
-//   const final: SearchResult[] = checkAccessPromises.filter((i) => !_.isNull(i)).slice(from, size);
-//   logger.debug(`search results ${final?.length}`);
-
-//   const response: SearchResults = {
-//     objects: final,
-//     total: final.length,
-//     time: new Date().toUTCString(),
-//   };
-
-//   logger.debug(`total response ${final.length}`);
-//   return response;
-// }
-
 class TransFormResults extends Transform {
-  private text: string;
-  // FIXME: this type is not correct,
-  private logger: any;
-  public constructor(text, logger, options) {
+  public constructor(options) {
     super(options);
-    this.text = text;
-    this.logger = logger;
   }
 
   /**
@@ -173,14 +137,10 @@ class TransFormResults extends Transform {
    * @override
    */
   public _transform(chunk, _encoding, callback) {
-    const isInteresting = compileTextSearch(this.text);
     if (_.isArray(chunk)) {
       (chunk as SearchResult[])
         .filter((pkgItem) => {
-          if (!isInteresting(pkgItem?.package)) {
-            return;
-          }
-          logger.debug(`[remote] streaming name ${pkgItem?.package?.name}`);
+          debug(`streaming remote pkg name ${pkgItem?.package?.name}`);
           return true;
         })
         .forEach((pkgItem) => {
@@ -188,10 +148,7 @@ class TransFormResults extends Transform {
         });
       return callback();
     } else {
-      if (!isInteresting(chunk)) {
-        return callback();
-      }
-      logger.debug(`[local] streaming pkg name ${(chunk as PackageResults)?.name}`);
+      debug(`streaming local pkg name ${chunk?.package?.name}`);
       this.push(chunk);
       return callback();
     }
@@ -206,76 +163,35 @@ class TransFormResults extends Transform {
  */
 export default function (route, auth: IAuth, storage: Storage): void {
   route.get('/-/v1/search', async (req, res, next) => {
-    // TODO: implement proper result scoring weighted by quality, popularity and maintenance query parameters
-    let [text, size, from /* , quality, popularity, maintenance */] = [
-      'text',
-      'size',
-      'from' /* , 'quality', 'popularity', 'maintenance' */,
-    ].map((k) => req.query[k]);
+    let [size, from] = ['size', 'from'].map((k) => req.query[k]);
 
     size = parseInt(size, 10) || 20;
     from = parseInt(from, 10) || 0;
     const data: any[] = [];
-    const transformToSearchPkg = new Transform({
-      objectMode: true,
-      transform(chunk: Package, _encoding, callback) {
-        try {
-          if (chunk?.name) {
-            // this is the path for local packages which does not comes from the npmjs search endpoint
-            // this has to be on sync what we get from npmjs (the hard part), eventually might mutate
-            const searchPkg = {
-              package: chunk,
-              // not sure if flags is need it
-              flags: {
-                unstable: Object.keys(chunk.versions).some((v) => semver.satisfies(v, '^1.0.0'))
-                  ? undefined
-                  : true,
-              },
-              local: true,
-              score: {
-                final: 1,
-                detail: {
-                  quality: 1,
-                  popularity: 1,
-                  maintenance: 0,
-                },
-              },
-              searchScore: 100000,
-            };
-            return callback(null, searchPkg);
-          } else {
-            return callback(null, chunk);
-          }
-        } catch (err) {
-          logger.error({ err }, 'transform search pkg failed @{err}');
-          callback(err);
-        }
-      },
-    });
-    const transformResults = new TransFormResults(text, logger, { objectMode: true });
+    const transformResults = new TransFormResults({ objectMode: true });
 
     const streamPassThrough = new PassThrough({ objectMode: true });
     storage.searchManager?.search(streamPassThrough, {
-      headers: req.headers,
       query: req.query,
       url: req.url,
     });
 
-    // console.log('--searchStream', searchStream);
     const outPutStream = new PassThrough({ objectMode: true });
-    pipeline(streamPassThrough, transformResults, transformToSearchPkg, outPutStream, (err) => {
+    pipeline(streamPassThrough, transformResults, outPutStream, (err) => {
       if (err) {
         next(getInternalError(err ? err.message : 'unknown error'));
       } else {
-        // console.log('Pipeline succeeded.');
+        debug('Pipeline succeeded.');
       }
     });
 
     outPutStream.on('data', (chunk) => {
+      debug('push stream data');
       data.push(chunk);
     });
 
     outPutStream.on('finish', async () => {
+      debug('stream finish');
       const checkAccessPromises: SearchResult[] = await Promise.all(
         removeDuplicates(data).map((pkgItem) => {
           return checkAccess(pkgItem, auth, req.remote_user);
@@ -297,61 +213,3 @@ export default function (route, auth: IAuth, storage: Storage): void {
     });
   });
 }
-// const isInteresting = compileTextSearch(text);
-// try {
-// const resultStream = await storage.search(0, { req, forceStream: true });
-// let resultBuf = [] as any;
-// let completed = false;
-
-// resultStream.on('data', (pkg: SearchResult[] | PackageResults) => {
-//   // console.log('-->', pkg);
-//   // packages from the upstreams
-//   if (_.isArray(pkg)) {
-//     resultBuf = resultBuf.concat(
-//       (pkg as SearchResult[]).filter((pkgItem) => {
-//         if (!isInteresting(pkgItem?.package)) {
-//           return;
-//         }
-//         logger.debug(`[remote] pkg name ${pkgItem?.package?.name}`);
-//         return true;
-//       })
-//     );
-//   } else {
-//     // packages from local
-//     // due compability with `/-/all` we cannot refactor storage.search();
-//     if (!isInteresting(pkg)) {
-//       return;
-//     }
-//     logger.debug(`[local] pkg name ${(pkg as PackageResults)?.name}`);
-//     resultBuf.push(pkg);
-//   }
-// });
-
-// resultStream.on('error', function () {
-//   logger.error('search endpoint has failed');
-//   res.socket.destroy();
-// });
-
-/**
- * we should stream back the results
- */
-// resultStream.on('end', async () => {
-//   if (!completed) {
-//     completed = true;
-//     try {
-//       const response = await sendResponse(resultBuf, resultStream, auth, req, from, size);
-//       logger.info('search endpoint ok results @{total}', { total: response.total });
-//       res.status(HTTP_STATUS.OK).json(response);
-//     } catch (err) {
-//       logger.error('search endpoint has failed @{err}', { err });
-//       next(err);
-//     }
-//   }
-// });
-// const resultStream = await storage.search(0, { req, forceStream: true });
-// pipeline(resultStream,
-// } catch (err) {
-//   logger.error('search endpoint has failed @{err}', { err });
-//   next(getInternalError(err.message));
-// }
-// });

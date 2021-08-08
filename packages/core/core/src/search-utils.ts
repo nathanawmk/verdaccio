@@ -1,4 +1,3 @@
-import { EventEmitter } from 'events';
 import { Author } from '@verdaccio/types';
 export type SearchMetrics = {
   quality: number;
@@ -49,19 +48,6 @@ export type SearchPackageItem = {
   score: Score;
   searchScore?: number;
 } & UnStable;
-class SearchEmitter extends EventEmitter {
-  // FIXME: function is a callback required for async.eachSeries
-  // this should be removed soon async is gone
-  public addPackage(pkg: SearchItem) {
-    this.emit('package', pkg);
-  }
-  public error() {
-    this.emit('error');
-  }
-  public end() {
-    this.emit('end');
-  }
-}
 
 export const UNSCOPED = 'unscoped';
 
@@ -69,5 +55,3 @@ export type SearchQuery = {
   text: string;
   size: number;
 } & SearchMetrics;
-
-export { SearchEmitter };
