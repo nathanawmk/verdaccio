@@ -4,50 +4,14 @@ import buildDebug from 'debug';
 import { Package } from '@verdaccio/types';
 import { logger } from '@verdaccio/logger';
 import { IAuth } from '@verdaccio/auth';
+import { searchUtils } from '@verdaccio/core';
 import { HTTP_STATUS, getInternalError } from '@verdaccio/commons-api';
 import { Storage } from '@verdaccio/store';
 
 const debug = buildDebug('verdaccio:api:search');
 
-type PublisherMaintainer = {
-  username: string;
-  email: string;
-};
-
-type PackageResults = {
-  name: string;
-  scope: string;
-  version: string;
-  description: string;
-  date: string;
-  links: {
-    npm: string;
-    homepage?: string;
-    repository?: string;
-    bugs?: string;
-  };
-  author: { name: string };
-  publisher: PublisherMaintainer;
-  maintainer: PublisherMaintainer;
-};
-
-type SearchResult = {
-  package: PackageResults;
-  flags?: { unstable: boolean | void };
-  local?: boolean;
-  score: {
-    final: number;
-    detail: {
-      quality: number;
-      popularity: number;
-      maintenance: number;
-    };
-  };
-  searchScore: number;
-};
-
 type SearchResults = {
-  objects: SearchResult[];
+  objects: searchUtils.SearchItemPkg[];
   total: number;
   time: string;
 };
@@ -138,7 +102,7 @@ class TransFormResults extends Transform {
    */
   public _transform(chunk, _encoding, callback) {
     if (_.isArray(chunk)) {
-      (chunk as SearchResult[])
+      (chunk as searchUtils.SearchItem[])
         .filter((pkgItem) => {
           debug(`streaming remote pkg name ${pkgItem?.package?.name}`);
           return true;
@@ -192,13 +156,13 @@ export default function (route, auth: IAuth, storage: Storage): void {
 
     outPutStream.on('finish', async () => {
       debug('stream finish');
-      const checkAccessPromises: SearchResult[] = await Promise.all(
+      const checkAccessPromises: searchUtils.SearchItemPkg[] = await Promise.all(
         removeDuplicates(data).map((pkgItem) => {
           return checkAccess(pkgItem, auth, req.remote_user);
         })
       );
 
-      const final: SearchResult[] = checkAccessPromises
+      const final: searchUtils.SearchItemPkg[] = checkAccessPromises
         .filter((i) => !_.isNull(i))
         .slice(from, size);
       logger.debug(`search results ${final?.length}`);

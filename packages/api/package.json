@@ -43,6 +43,7 @@
     "@verdaccio/commons-api": "workspace:11.0.0-alpha.3",
     "@verdaccio/config": "workspace:6.0.0-6-next.7",
     "@verdaccio/hooks": "workspace:6.0.0-6-next.4",
+    "@verdaccio/core": "workspace:6.0.0-next.0",
     "@verdaccio/logger": "workspace:6.0.0-6-next.4",
     "@verdaccio/middleware": "workspace:6.0.0-6-next.9",
     "@verdaccio/store": "workspace:6.0.0-6-next.10",

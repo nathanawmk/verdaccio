@@ -56,10 +56,12 @@ export function normalizeSearchPackage(pkg: Package): searchUtils.SearchPackageB
     version: latest,
     keywords: version.keywords,
     date: pkg.time[latest],
-    author: version.author,
+    // FIXME: type
+    author: version.author as any,
     // FIXME: not possible fill this out from a private package
     publisher: {},
-    maintainers: version.maintainers,
+    // FIXME: type
+    maintainers: version.maintainers as any,
     links: {
       npm: '',
       homepage: version.homepage,

@@ -1,4 +1,3 @@
-import { Author } from '@verdaccio/types';
 export type SearchMetrics = {
   quality: number;
   popularity: number;
@@ -25,11 +24,16 @@ export type Score = {
   detail: SearchMetrics;
 };
 
+type PublisherMaintainer = {
+  username: string;
+  email: string;
+};
+
 export type SearchPackageBody = {
   name: string;
   scope: string;
   description: string;
-  author: string | Author;
+  author: string | PublisherMaintainer;
   version: string;
   keywords: string | string[] | undefined;
   date: string;
@@ -40,7 +44,7 @@ export type SearchPackageBody = {
     bugs?: string;
   };
   publisher?: any;
-  maintainers?: Author[];
+  maintainers?: PublisherMaintainer[];
 };
 
 export type SearchPackageItem = {
@@ -54,4 +58,5 @@ export const UNSCOPED = 'unscoped';
 export type SearchQuery = {
   text: string;
   size: number;
+  from: string;
 } & SearchMetrics;

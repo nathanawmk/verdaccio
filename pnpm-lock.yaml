@@ -237,6 +237,7 @@ importers:
       '@verdaccio/auth': workspace:6.0.0-6-next.9
       '@verdaccio/commons-api': workspace:11.0.0-alpha.3
       '@verdaccio/config': workspace:6.0.0-6-next.7
+      '@verdaccio/core': workspace:6.0.0-next.0
       '@verdaccio/hooks': workspace:6.0.0-6-next.4
       '@verdaccio/logger': workspace:6.0.0-6-next.4
       '@verdaccio/middleware': workspace:6.0.0-6-next.9
@@ -257,6 +258,7 @@ importers:
       '@verdaccio/auth': link:../auth
       '@verdaccio/commons-api': link:../core/commons-api
       '@verdaccio/config': link:../config
+      '@verdaccio/core': link:../core/core
       '@verdaccio/hooks': link:../hooks
       '@verdaccio/logger': link:../logger
       '@verdaccio/middleware': link:../middleware
