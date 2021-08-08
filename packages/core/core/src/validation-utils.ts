@@ -15,7 +15,7 @@ export function validateName(name: string): boolean {
   if (typeof name !== 'string') {
     return false;
   }
-  
+
   let normalizedName: string = name.toLowerCase();
 
   const isScoped: boolean = isPackageNameScoped(name);
