@@ -68,12 +68,10 @@ export async function searchOnStorage(
   const foldersOnStorage = await getFolders(storagePath);
   debug('folders on storage %o', foldersOnStorage.length);
   for (let store of foldersOnStorage) {
-    // debug('folder storage %o', store);
     const isStorage = matchedStorages.findIndex((storage) => store.match(storage));
     if (isStorage === -1) {
       const pkgName = store.replace(join(storagePath, posix.sep), '');
       if (validatioUtils.validateName(pkgName)) {
-        // debug('add to search %o', pkgName);
         results.push({
           name: pkgName,
           path: store,
@@ -82,7 +80,6 @@ export async function searchOnStorage(
     } else {
       const pkgName = store.replace(matchedStorages[isStorage], '');
       if (validatioUtils.validateName(pkgName)) {
-        // debug('add to search %o', pkgName);
         results.push({
           name: pkgName,
           path: store,
