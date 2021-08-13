@@ -560,7 +560,8 @@ class ProxyStorage implements IProxy {
       }
 
       const streamSearch = new PassThrough({ objectMode: true });
-      const streamResponse = Readable.from(await response.text());
+      const res = await response.text();
+      const streamResponse = Readable.from(res);
       // objects is one of the properties on the body, it ignores date and total
       streamResponse.pipe(JSONStream.parse('objects')).pipe(streamSearch, { end: true });
       return streamSearch;

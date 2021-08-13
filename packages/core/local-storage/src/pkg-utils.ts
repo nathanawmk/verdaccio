@@ -6,7 +6,6 @@ export async function loadPrivatePackages(path: string, logger: Logger): Promise
   const list: StorageList = [];
   const emptyDatabase = { list, secret: '' };
   const data = await readFilePromise(path);
-
   if (_.isNil(data)) {
     // readFileSync is platform specific, FreeBSD might return null
     return emptyDatabase;

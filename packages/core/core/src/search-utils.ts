@@ -15,6 +15,7 @@ export type SearchItemPkg = {
   path?: string;
   time?: number | Date;
 };
+
 export type SearchItem = {
   package: SearchItemPkg;
   score: Score;

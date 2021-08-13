@@ -1,4 +1,4 @@
-import { PassThrough, TransformOptions } from 'stream';
+import { PassThrough, TransformOptions, Transform } from 'stream';
 
 export interface IReadTarball {
   abort?: () => void;
@@ -81,15 +81,29 @@ function addAbstractMethods(self: any, name: any): void {
   });
 }
 
+/**
+ * Converts a buffer stream to a string.
+ */
 const readableToString = async (stream) => {
   const chunks: Buffer[] = [];
   for await (let chunk of stream) {
     chunks.push(Buffer.from(chunk));
   }
-
   const buffer = Buffer.concat(chunks);
   const str = buffer.toString('utf-8');
   return str;
 };
 
-export { ReadTarball, UploadTarball, readableToString };
+/**
+ * Transform stream object  mode to string
+ **/
+const transformObjectToString = () => {
+  return new Transform({
+    objectMode: true,
+    transform: (chunk, encoding, callback) => {
+      callback(null, JSON.stringify(chunk));
+    },
+  });
+};
+
+export { ReadTarball, UploadTarball, readableToString, transformObjectToString };

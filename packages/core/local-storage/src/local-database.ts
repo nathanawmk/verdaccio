@@ -85,7 +85,6 @@ class LocalDatabase extends TokenActions implements IPluginStorage {
    * The field storage could be absolute or relative.
    * If relative, it will be resolved against the config path.
    * If absolute, it will be returned as is.
-   *
    **/
   private getStoragePath() {
     const { storage } = this.config;
@@ -114,6 +113,18 @@ class LocalDatabase extends TokenActions implements IPluginStorage {
     }) as searchUtils.SearchItemPkg[];
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  public async getScore(_pkg: searchUtils.SearchItemPkg): Promise<searchUtils.Score> {
+    return Promise.resolve({
+      final: 1,
+      detail: {
+        maintenance: 0,
+        popularity: 1,
+        quality: 1,
+      },
+    });
+  }
+
   public async search(query: searchUtils.SearchQuery): Promise<searchUtils.SearchItem[]> {
     const results: searchUtils.SearchItem[] = [];
     const storagePath = this.getStoragePath();
@@ -123,16 +134,12 @@ class LocalDatabase extends TokenActions implements IPluginStorage {
     );
     debug('packages found %o', packagesOnStorage.length);
     for (let storage of packagesOnStorage) {
+      const score = await this.getScore(storage);
       results.push({
         package: storage,
-        score: {
-          final: 1,
-          detail: {
-            maintenance: 0,
-            popularity: 1,
-            quality: 1,
-          },
-        },
+        // there is no particular reason to predefined scores
+        // could be improved by using
+        score,
       });
     }
     return results;
@@ -194,10 +201,6 @@ class LocalDatabase extends TokenActions implements IPluginStorage {
 
   public async clean(): Promise<void> {
     await this._sync();
-  }
-
-  private getTime(time: number, mtime: Date): number | Date {
-    return time ? time : mtime;
   }
 
   private _getCustomPackageLocalStorages(): Map<string, string> {

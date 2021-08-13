@@ -3,9 +3,10 @@
 
 import path from 'path';
 import semver from 'semver';
+import getStream from 'get-stream';
 import { Config, parseConfigFile } from '@verdaccio/config';
 import { streamUtils } from '@verdaccio/core';
-import { ProxyStorage, SearchQuery } from '../src/up-storage';
+import { ProxyStorage } from '../src/up-storage';
 
 // FUTURE: remove me when v15 is the min required version
 if (semver.lte(process.version, 'v15.0.0')) {
@@ -40,13 +41,7 @@ const { setGlobalDispatcher } = require('undici-fetch');
 const domain = 'https://registry.npmjs.org';
 
 describe('proxy', () => {
-  const query: SearchQuery = {
-    text: 'verdaccio',
-    maintenance: 1,
-    popularity: 1,
-    size: 10,
-    quality: 1,
-  };
+  const queryUrl = '/-/v1/search?maintenance=1&popularity=1&quality=1&size=10&text=verdaccio';
   const defaultRequestOptions = {
     url: domain,
   };
@@ -60,24 +55,21 @@ describe('proxy', () => {
 
   describe('search', () => {
     test('get response from v1 endpoint', async () => {
-      const response = { body: { foo: 1 } };
+      const response = require('./partials/search-v1.json');
       const mockAgent = new MockAgent({ connections: 1 });
       mockAgent.disableNetConnect();
       setGlobalDispatcher(mockAgent);
       const mockClient = mockAgent.get(domain);
-      mockClient.intercept(options).reply(200, response);
+      mockClient.intercept(options).reply(200, JSON.stringify(response));
       const prox1 = new ProxyStorage(defaultRequestOptions, conf);
       const abort = new AbortController();
       const stream = await prox1.search({
-        headers: {
-          referer: 'some.org',
-        },
-        query,
         abort,
-        url: `/-/v1/search`,
+        url: queryUrl,
       });
 
-      expect(await streamUtils.readableToString(stream)).toEqual('{"body":{"foo":1}}');
+      const searchResponse = await getStream(stream.pipe(streamUtils.transformObjectToString()));
+      expect(searchResponse).toEqual(searchResponse);
     });
 
     test('handle bad response 409', async () => {
@@ -90,36 +82,13 @@ describe('proxy', () => {
       const prox1 = new ProxyStorage(defaultRequestOptions, conf);
       await expect(
         prox1.search({
-          headers: {
-            referer: 'some.org',
-          },
-          query,
           abort,
-          url: `/-/v1/search`,
+          url: queryUrl,
         })
       ).rejects.toThrow('bad status code 409 from uplink');
     });
 
-    test.skip('abort search from v1 endpoint', async () => {
-      // FIXME: abort not working, this migh require a real mocked http server
-      const mockAgent = new MockAgent({ connections: 1 });
-      setGlobalDispatcher(mockAgent);
-      const mockClient = mockAgent.get(domain);
-      mockClient.intercept(options).reply(200, {}).delay(1000);
-      const abort = new AbortController();
-      const prox1 = new ProxyStorage(defaultRequestOptions, conf);
-      abort.abort();
-      await expect(
-        prox1.search({
-          headers: {
-            referer: 'some.org',
-          },
-          query,
-          abort,
-          url: `${domain}/-/v1/search`,
-        })
-      ).rejects.toThrow('bad status code 409 from uplink');
-    });
+    test.todo('abort search from v1 endpoint');
 
     // TODO: we should test the gzip deflate here, but is hard to test
     // fix me if you can deal with Incorrect Header Check issue
@@ -135,12 +104,8 @@ describe('proxy', () => {
       const prox1 = new ProxyStorage(defaultRequestOptions, conf);
       await expect(
         prox1.search({
-          headers: {
-            referer: 'some.org',
-          },
-          query,
           abort,
-          url: `/-/v1/search`,
+          url: queryUrl,
         })
       ).rejects.toThrow('bad status code 500 from uplink');
     });
