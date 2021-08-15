@@ -341,10 +341,9 @@ export function unPublishPackage(storage: Storage) {
       if (err) {
         return next(err);
       }
-
-      res.status(HTTP_STATUS.CREATED);
-      return next({ ok: API_MESSAGE.PKG_REMOVED });
     }
+    res.status(HTTP_STATUS.CREATED);
+    return next({ ok: API_MESSAGE.PKG_REMOVED });
   };
 }
 

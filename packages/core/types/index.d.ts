@@ -453,9 +453,9 @@ declare module '@verdaccio/types' {
   interface ILocalData<T> extends IPlugin<T>, ITokenActions {
     logger: Logger;
     config: T & Config;
-    add(name: string, callback: Callback): void;
-    remove(name: string, callback: Callback): void;
-    get(callback: Callback): void;
+    add(name: string): Promise<void>;
+    remove(name: string): Promise<void>;
+    get(): Promise<any>;
     init(): Promise<void>;
     getSecret(): Promise<string>;
     setSecret(secret: string): Promise<any>;

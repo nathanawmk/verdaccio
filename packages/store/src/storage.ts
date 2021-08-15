@@ -360,7 +360,7 @@ class Storage {
   public getPackage(options: IGetPackageOptions): void {
     const { name } = options;
     debug('get package for %o', name);
-    this.localStorage.getPackageMetadata(name, (err, data): void => {
+    this.localStorage.getPackageMetadata(name, (err, data) => {
       if (err && (!err.status || err.status >= HTTP_STATUS.INTERNAL_ERROR)) {
         // report internal errors right away
         debug('error on get package for %o with error %o', name, err?.message);
@@ -383,7 +383,7 @@ class Storage {
           // npm can throw if this field doesn't exist
           result._attachments = {};
 
-          debug('sync uplinks errors %o', uplinkErrors);
+          debug('no. sync uplinks errors %o', uplinkErrors?.length);
           options.callback(null, result, uplinkErrors);
         }
       );
@@ -398,53 +398,54 @@ class Storage {
     const self = this;
     debug('get local database');
     if (this.localStorage.storagePlugin !== null) {
-      this.localStorage.storagePlugin.get((err, locals): void => {
-        if (err) {
-          callback(err);
-        }
+      this.localStorage.storagePlugin
+        .get()
+        .then((locals) => {
+          const packages: Version[] = [];
+          const getPackage = function (itemPkg): void {
+            self.localStorage.getPackageMetadata(
+              locals[itemPkg],
+              function (err, pkgMetadata: Package): void {
+                if (_.isNil(err)) {
+                  const latest = pkgMetadata[DIST_TAGS].latest;
+                  if (latest && pkgMetadata.versions[latest]) {
+                    const version: Version = pkgMetadata.versions[latest];
+                    const timeList = pkgMetadata.time as GenericBody;
+                    const time = timeList[latest];
+                    // @ts-ignore
+                    version.time = time;
 
-        const packages: Version[] = [];
-        const getPackage = function (itemPkg): void {
-          self.localStorage.getPackageMetadata(
-            locals[itemPkg],
-            function (err, pkgMetadata: Package): void {
-              if (_.isNil(err)) {
-                const latest = pkgMetadata[DIST_TAGS].latest;
-                if (latest && pkgMetadata.versions[latest]) {
-                  const version: Version = pkgMetadata.versions[latest];
-                  const timeList = pkgMetadata.time as GenericBody;
-                  const time = timeList[latest];
-                  // @ts-ignore
-                  version.time = time;
+                    // Add for stars api
+                    // @ts-ignore
+                    version.users = pkgMetadata.users;
 
-                  // Add for stars api
-                  // @ts-ignore
-                  version.users = pkgMetadata.users;
+                    packages.push(version);
+                  } else {
+                    self.logger.warn(
+                      { package: locals[itemPkg] },
+                      'package @{package} does not have a "latest" tag?'
+                    );
+                  }
+                }
 
-                  packages.push(version);
+                if (itemPkg >= locals.length - 1) {
+                  callback(null, packages);
                 } else {
-                  self.logger.warn(
-                    { package: locals[itemPkg] },
-                    'package @{package} does not have a "latest" tag?'
-                  );
+                  getPackage(itemPkg + 1);
                 }
               }
+            );
+          };
 
-              if (itemPkg >= locals.length - 1) {
-                callback(null, packages);
-              } else {
-                getPackage(itemPkg + 1);
-              }
-            }
-          );
-        };
-
-        if (locals.length) {
-          getPackage(0);
-        } else {
-          callback(null, []);
-        }
-      });
+          if (locals.length) {
+            getPackage(0);
+          } else {
+            callback(null, []);
+          }
+        })
+        .catch((err) => {
+          callback(err);
+        });
     } else {
       debug('local stora instance is null');
     }

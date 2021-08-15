@@ -49,7 +49,7 @@ describe('package', () => {
     });
   });
 
-  test('should return a package by version', async () => {
+  test.only('should return a package by version', async () => {
     await publishVersion(app, 'package.yaml', 'foo2', '1.0.0');
     return new Promise((resolve) => {
       supertest(app)
@@ -64,7 +64,7 @@ describe('package', () => {
     });
   });
 
-  // TODO: investigate the 404
+  // FIXME: investigate the 404
   test.skip('should return a package by dist-tag', async (done) => {
     // await publishVersion(app, 'package.yaml', 'foo3', '1.0.0');
     await publishVersion(app, 'package.yaml', 'foo-tagged', '1.0.0');
@@ -80,7 +80,7 @@ describe('package', () => {
       });
   });
 
-  test.skip('should return 404', async () => {
+  test('should return 404', async () => {
     return supertest(app)
       .get('/404-not-found')
       .set('Accept', HEADERS.JSON)
