@@ -9,7 +9,7 @@ interface IPlugin {
 
 export interface IPluginStorage<T> extends IPlugin {
   config: T & Config;
-  add(name: string, callback: Callback): void;
+  add(name: string): Promise<void>;
   remove(name: string, callback: Callback): void;
   get(callback: Callback): void;
   init(): Promise<void>;

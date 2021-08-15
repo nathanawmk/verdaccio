@@ -73,11 +73,11 @@ class LocalDatabase extends TokenActions implements IPluginStorage {
 
     if (this.data.list.indexOf(name) === -1) {
       this.data.list.push(name);
-      debug('the private package %o has been added', name);
+      debug('the private package %s has been added', name);
       await this._sync();
     } else {
-      debug('the private package %o was not added', name);
-      throw Error('package not added');
+      debug('the private package %s already exist on database', name);
+      return Promise.resolve();
     }
   }
 
@@ -270,7 +270,10 @@ class LocalDatabase extends TokenActions implements IPluginStorage {
     } catch (err) {
       // readFileSync is platform specific, macOS, Linux and Windows thrown an error
       // Only recreate if file not found to prevent data loss
-      this.logger.error({ err }, 'error on fetch local packages @{err}');
+      this.logger.warn(
+        { path: this.path },
+        'no private database found, recreating new one on @{path}'
+      );
       if (err.code !== noSuchFile) {
         this.locked = true;
         this.logger.error(

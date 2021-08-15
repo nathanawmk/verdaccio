@@ -13,7 +13,7 @@ import { getCode, getInternalError, getNotFound, VerdaccioError } from '@verdacc
 export const fileExist = 'EEXISTS';
 export const noSuchFile = 'ENOENT';
 export const resourceNotAvailable = 'EAGAIN';
-export const pkgFileName = 'package.json';
+export const packageJSONFileName = 'package.json';
 
 const debug = buildDebug('verdaccio:plugin:local-storage:fs');
 
@@ -86,7 +86,7 @@ export default class LocalFS implements ILocalFSPackageManager {
     transformPackage: Function,
     onEnd: Callback
   ): void {
-    this._lockAndReadJSON(pkgFileName, (err, json) => {
+    this._lockAndReadJSON(packageJSONFileName, (err, json) => {
       let locked = false;
       const self = this;
       // callback that cleans up lock first
@@ -95,7 +95,8 @@ export default class LocalFS implements ILocalFSPackageManager {
         const _args = arguments;
 
         if (locked) {
-          self._unlockJSON(pkgFileName, () => {
+          debug('unlock %s', packageJSONFileName);
+          self._unlockJSON(packageJSONFileName, () => {
             // ignore any error from the unlock
             if (lockError !== null) {
               debug('lock file: %o has failed with error %o', name, lockError);
@@ -152,19 +153,19 @@ export default class LocalFS implements ILocalFSPackageManager {
   public createPackage(name: string, value: Package, cb: Callback): void {
     debug('create a package %o', name);
 
-    this._createFile(this._getStorage(pkgFileName), this._convertToString(value), cb);
+    this._createFile(this._getStorage(packageJSONFileName), this._convertToString(value), cb);
   }
 
   public savePackage(name: string, value: Package, cb: Callback): void {
     debug('save a package %o', name);
 
-    this._writeFile(this._getStorage(pkgFileName), this._convertToString(value), cb);
+    this._writeFile(this._getStorage(packageJSONFileName), this._convertToString(value), cb);
   }
 
   public readPackage(name: string, cb: Callback): void {
     debug('read a package %o', name);
 
-    this._readStorageFile(this._getStorage(pkgFileName)).then(
+    this._readStorageFile(this._getStorage(packageJSONFileName)).then(
       (res) => {
         try {
           const data: any = JSON.parse(res.toString('utf8'));
@@ -366,7 +367,7 @@ export default class LocalFS implements ILocalFSPackageManager {
 
   private _lockAndReadJSON(name: string, cb: Function): void {
     const fileName: string = this._getStorage(name);
-
+    debug('lock and read a file %o', fileName);
     readFile(
       fileName,
       {
@@ -375,6 +376,7 @@ export default class LocalFS implements ILocalFSPackageManager {
       },
       (err, res) => {
         if (err) {
+          this.logger.error({ err }, 'error on lock file @{err.message}');
           debug('error on lock and read json for file: %o', name);
 
           return cb(err);

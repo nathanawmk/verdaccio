@@ -1,7 +1,6 @@
 /// <reference types="node" />
 
 import { PassThrough } from 'stream';
-import { EventEmitter } from 'events';
 declare module '@verdaccio/types' {
   type StringValue = string | void | null;
 
@@ -482,7 +481,7 @@ declare module '@verdaccio/types' {
       updateHandler: StorageUpdateCallback,
       onWrite: StorageWriteCallback,
       transformPackage: PackageTransformer,
-      onEnd: CallbackAction
+      onEnd: Callback
     ): void;
     savePackage(fileName: string, json: Package, callback: CallbackAction): void;
   }

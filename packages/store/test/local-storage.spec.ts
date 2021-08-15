@@ -1,5 +1,6 @@
 import path from 'path';
 import rimRaf from 'rimraf';
+import { dirSync } from 'tmp-promise';
 
 import { Config as AppConfig } from '@verdaccio/config';
 import { logger, setup } from '@verdaccio/logger';
@@ -23,9 +24,11 @@ describe('LocalStorage', () => {
   const tarballName2 = `${pkgName}-add-tarball-1.0.5.tgz`;
 
   const getStorage = (LocalStorageClass = LocalStorage) => {
+    // @ts-expect-error
+    const tmpFolder = dirSync({ unsafeCleanup: true });
     const config: Config = new AppConfig(
       configExample({
-        config_path: path.join('../partials/store'),
+        config_path: path.join(tmpFolder.name, 'storage'),
       })
     );
 
@@ -47,7 +50,10 @@ describe('LocalStorage', () => {
         version,
         generateNewVersion(pkgName, version),
         '',
-        (err, data) => {
+        (_err, data) => {
+          if (_err) {
+            throw new Error(`Error adding new version: ${_err}`);
+          }
           resolve(data);
         }
       );
@@ -60,10 +66,10 @@ describe('LocalStorage', () => {
 
       stream.on('error', (err) => {
         expect(err).toBeNull();
-        reject();
+        reject(err);
       });
       stream.on('success', () => {
-        resolve();
+        resolve(true);
       });
 
       stream.end(Buffer.from(tarballData.data, 'base64'));
@@ -75,6 +81,7 @@ describe('LocalStorage', () => {
     return new Promise((resolve, reject) => {
       // @ts-ignore
       const pkgStoragePath = storage._getLocalStorage(pkgName);
+      // @ts-expect-error
       rimRaf(pkgStoragePath.path, (err) => {
         expect(err).toBeNull();
         storage.addPackage(pkgName, metadata, async (err, data) => {
@@ -93,18 +100,15 @@ describe('LocalStorage', () => {
     await storage.init();
   });
 
-  test('should be defined', () => {
-    expect(storage).toBeDefined();
-  });
-
   describe('LocalStorage::preparePackage', () => {
     test('should add a package', (done) => {
       const metadata = JSON.parse(readMetadata().toString());
       // @ts-ignore
       const pkgStoragePath = storage._getLocalStorage(pkgName);
+      // @ts-expect-error
       rimRaf(pkgStoragePath.path, (err) => {
         expect(err).toBeNull();
-        storage.addPackage(pkgName, metadata, (err, data) => {
+        storage.addPackage(pkgName, metadata, (_err, data) => {
           expect(data.version).toMatch(/1.0.0/);
           expect(data.dist.tarball).toMatch(/npm_test-1.0.0.tgz/);
           expect(data.name).toEqual(pkgName);
@@ -117,10 +121,11 @@ describe('LocalStorage', () => {
       const metadata = JSON.parse(readMetadata());
       // @ts-ignore
       const pkgStoragePath = storage._getLocalStorage(pkgNameScoped);
-
+      // @ts-expect-error
       rimRaf(pkgStoragePath.path, (err) => {
         expect(err).toBeNull();
         storage.addPackage(pkgNameScoped, metadata, (err, data) => {
+          expect(err).toBeNull();
           expect(data.version).toMatch(/1.0.0/);
           expect(data.dist.tarball).toMatch(/npm_test-1.0.0.tgz/);
           expect(data.name).toEqual(pkgName);
@@ -131,7 +136,6 @@ describe('LocalStorage', () => {
 
     test('should fails on add a package', (done) => {
       const metadata = JSON.parse(readMetadata());
-
       storage.addPackage(pkgName, metadata, (err) => {
         expect(err).not.toBeNull();
         expect(err.statusCode).toEqual(HTTP_STATUS.CONFLICT);
@@ -525,7 +529,7 @@ describe('LocalStorage', () => {
         });
       });
 
-      test('should remove completely @scoped package', (done) => {
+      test.only('should remove completely @scoped package', (done) => {
         storage.removePackage(pkgNameScoped, (err, data) => {
           expect(err).toBeNull();
           expect(data).toBeUndefined();

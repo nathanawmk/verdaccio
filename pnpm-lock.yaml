@@ -421,6 +421,7 @@ importers:
       '@verdaccio/utils': workspace:6.0.0-6-next.5
       debug: 4.3.1
       globby: 11.0.1
+      lockfile: 1.0.4
       lodash: 4.17.21
       lowdb: 1.0.0
       lru-cache: 6.0.0
@@ -435,6 +436,7 @@ importers:
       '@verdaccio/utils': link:../../utils
       debug: 4.3.1
       globby: 11.0.1
+      lockfile: 1.0.4
       lodash: 4.17.21
       lowdb: 1.0.0
       lru-cache: 6.0.0
@@ -1057,6 +1059,7 @@ importers:
       lunr-mutable-indexes: 2.3.2
       merge2: 1.4.1
       semver: 7.1.2
+      tmp-promise: 3.0.2
     dependencies:
       '@verdaccio/commons-api': link:../core/commons-api
       '@verdaccio/config': link:../config
@@ -1079,6 +1082,7 @@ importers:
     devDependencies:
       '@verdaccio/mock': link:../mock
       '@verdaccio/types': link:../core/types
+      tmp-promise: 3.0.2
 
   packages/tools/benchmark:
     specifiers:

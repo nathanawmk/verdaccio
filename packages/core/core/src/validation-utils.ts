@@ -89,10 +89,12 @@ export function validateMetadata(object: Package, name: string): Package {
  * @return {Boolean}
  */
 export function isObject(obj: any): boolean {
+  if (obj === null || typeof obj === 'undefined') {
+    return false;
+  }
+
   return (
-    (typeof obj === 'object' || typeof obj === 'function') &&
-    obj !== null &&
-    obj === null &&
+    (typeof obj === 'object' || typeof obj.prototype === 'undefined') &&
     Array.isArray(obj) === false
   );
 }

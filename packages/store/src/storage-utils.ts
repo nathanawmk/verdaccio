@@ -10,7 +10,7 @@ import {
 
 import { Package, Version, Author, StringValue } from '@verdaccio/types';
 
-import { pkgUtils } from '@verdaccio/core';
+import { pkgUtils, validatioUtils } from '@verdaccio/core';
 import { API_ERROR, HTTP_STATUS, DIST_TAGS, USERS } from '@verdaccio/commons-api';
 import { SearchInstance } from './search';
 import { LocalStorage } from './local-storage';
@@ -47,7 +47,7 @@ export function normalizePackage(pkg: Package): Package {
   pkgProperties.forEach((key): void => {
     const pkgProp = pkg[key];
 
-    if (isNil(pkgProp) || isObject(pkgProp) === false) {
+    if (isNil(pkgProp) || validatioUtils.isObject(pkgProp) === false) {
       pkg[key] = {};
     }
   });

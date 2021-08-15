@@ -1,11 +1,11 @@
 import assert from 'assert';
 import UrlNode from 'url';
 import { PassThrough } from 'stream';
-import _ from 'lodash';
+import _, { countBy } from 'lodash';
 import buildDebug from 'debug';
 
 import { ErrorCode, isObject, getLatestVersion, validateName } from '@verdaccio/utils';
-import { searchUtils, pluginUtils, pkgUtils } from '@verdaccio/core';
+import { searchUtils, pluginUtils, pkgUtils, validatioUtils } from '@verdaccio/core';
 import { API_ERROR, DIST_TAGS, HTTP_STATUS, SUPPORT_ERRORS, USERS } from '@verdaccio/commons-api';
 import { createTarballHash } from '@verdaccio/utils';
 import { loadPlugin } from '@verdaccio/loaders';
@@ -292,30 +292,32 @@ class LocalStorage {
     version: string,
     metadata: Version,
     tag: StringValue,
-    callback: CallbackAction
+    callback: Callback
   ): void {
-    debug(`add version package for`, name);
+    debug(`add version %s package for %s`, version, name);
     this._updatePackage(
       name,
-      (data, cb: Callback): void => {
+      async (data, cb: Callback): Promise<void> => {
+        debug('%s package is being updated', name);
         // keep only one readme per package
         data.readme = metadata.readme;
-
+        debug('%s` readme mutated', name);
         // TODO: lodash remove
         metadata = cleanUpReadme(metadata);
         metadata.contributors = normalizeContributors(metadata.contributors as Author[]);
-
+        debug('%s` contributors normalized', name);
         const hasVersion = data.versions[version] != null;
         if (hasVersion) {
+          debug('%s version %s already exists', name, version);
           return cb(ErrorCode.getConflict());
         }
 
         // if uploaded tarball has a different shasum, it's very likely that we
         // have some kind of error
-        if (isObject(metadata.dist) && _.isString(metadata.dist.tarball)) {
+        if (validatioUtils.isObject(metadata.dist) && _.isString(metadata.dist.tarball)) {
           const tarball = metadata.dist.tarball.replace(/.*\//, '');
 
-          if (isObject(data._attachments[tarball])) {
+          if (validatioUtils.isObject(data._attachments[tarball])) {
             if (
               _.isNil(data._attachments[tarball].shasum) === false &&
               _.isNil(metadata.dist.shasum) === false
@@ -349,13 +351,13 @@ class LocalStorage {
         data.versions[version] = metadata;
         tagVersion(data, version, tag);
 
-        this.storagePlugin.add(name, (addFailed): void => {
-          if (addFailed) {
-            return cb(ErrorCode.getBadData(addFailed.message));
-          }
-
+        try {
+          debug('%s` add on database', name);
+          await this.storagePlugin.add(name);
           cb();
-        });
+        } catch (err) {
+          cb(ErrorCode.getBadData(err.message));
+        }
       },
       callback
     );
@@ -367,7 +369,7 @@ class LocalStorage {
    * @param {*} tags
    * @param {*} callback
    */
-  public mergeTags(pkgName: string, tags: MergeTags, callback: CallbackAction): void {
+  public mergeTags(pkgName: string, tags: MergeTags, callback: Callback): void {
     debug(`merge tags for`, pkgName);
     this._updatePackage(
       pkgName,
@@ -850,7 +852,7 @@ class LocalStorage {
   private _updatePackage(
     name: string,
     updateHandler: StorageUpdateCallback,
-    callback: CallbackAction
+    callback: Callback
   ): void {
     const storage: IPackageStorage = this._getLocalStorage(name);
 

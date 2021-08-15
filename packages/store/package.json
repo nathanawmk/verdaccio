@@ -60,7 +60,8 @@
   },
   "devDependencies": {
     "@verdaccio/mock": "workspace:6.0.0-6-next.7",
-    "@verdaccio/types": "workspace:11.0.0-6-next.7"
+    "@verdaccio/types": "workspace:11.0.0-6-next.7",
+    "tmp-promise": "3.0.2"
   },
   "funding": {
     "type": "opencollective",
