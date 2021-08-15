@@ -33,6 +33,8 @@ const domain = 'https://registry.npmjs.org';
 describe('proxy', () => {
   beforeEach(() => {
     nock.cleanAll();
+    nock.abortPendingRequests();
+    jest.clearAllMocks();
   });
   const defaultRequestOptions = {
     url: domain,
@@ -225,16 +227,9 @@ describe('proxy', () => {
         const prox1 = new ProxyStorage(defaultRequestOptions, conf);
         prox1.getRemoteMetadata('jquery', {}, (error) => {
           expect(error.statusCode).toEqual(500);
-          expect(mockInfo).toHaveBeenCalled();
+          expect(mockInfo).toHaveBeenCalledTimes(1);
           expect(mockHttp).toHaveBeenCalledWith({
-            request: { method: 'GET', url: 'https://registry.npmjs.org/jquery' },
-            status: 409,
-          });
-          expect(mockHttp).toHaveBeenCalledWith({
-            bytes: { in: 0, out: 0 },
-            err: undefined,
-            error: undefined,
-            request: { method: 'GET', url: 'https://registry.npmjs.org/jquery' },
+            request: { method: 'GET', url: `${domain}/jquery` },
             status: 409,
           });
           done();

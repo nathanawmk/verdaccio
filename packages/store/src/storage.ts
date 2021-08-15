@@ -172,9 +172,9 @@ class Storage {
    Function removes a package from local storage
    Used storages: local (write)
    */
-  public removePackage(name: string, callback: Callback): void {
+  public async removePackage(name: string): Promise<void> {
     debug('remove packagefor package %o', name);
-    this.localStorage.removePackage(name, callback);
+    await this.localStorage.removePackage(name);
     // update the indexer
     SearchInstance.remove(name);
   }

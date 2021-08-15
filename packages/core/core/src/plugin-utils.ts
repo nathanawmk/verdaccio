@@ -10,7 +10,7 @@ interface IPlugin {
 export interface IPluginStorage<T> extends IPlugin {
   config: T & Config;
   add(name: string): Promise<void>;
-  remove(name: string, callback: Callback): void;
+  remove(name: string): Promise<void>;
   get(callback: Callback): void;
   init(): Promise<void>;
   getSecret(): Promise<string>;

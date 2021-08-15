@@ -10,7 +10,7 @@ const readMetadata = (fileName = 'metadata') => readFile(`../fixtures/${fileName
 import { Config, MergeTags, Package } from '@verdaccio/types';
 import { API_ERROR, HTTP_STATUS, DIST_TAGS } from '@verdaccio/commons-api';
 import { VerdaccioError } from '@verdaccio/commons-api';
-import { LocalStorage } from '../src/local-storage';
+import { LocalStorage, PROTO_NAME } from '../src/local-storage';
 import { generatePackageTemplate } from '../src/storage-utils';
 import { readFile } from './fixtures/test.utils';
 
@@ -23,9 +23,7 @@ describe('LocalStorage', () => {
   const tarballName = `${pkgName}-add-tarball-1.0.4.tgz`;
   const tarballName2 = `${pkgName}-add-tarball-1.0.5.tgz`;
 
-  const getStorage = (LocalStorageClass = LocalStorage) => {
-    // @ts-expect-error
-    const tmpFolder = dirSync({ unsafeCleanup: true });
+  const getStorage = (tmpFolder, LocalStorageClass = LocalStorage) => {
     const config: Config = new AppConfig(
       configExample({
         config_path: path.join(tmpFolder.name, 'storage'),
@@ -59,13 +57,12 @@ describe('LocalStorage', () => {
       );
     });
   };
-  const addTarballToStore = (pkgName: string, tarballName) => {
+  const addTarballToStore = (pkgName: string, tarballName: string) => {
     return new Promise((resolve, reject) => {
       const tarballData = JSON.parse(readMetadata('addTarball').toString());
       const stream = storage.addTarball(pkgName, tarballName);
 
       stream.on('error', (err) => {
-        expect(err).toBeNull();
         reject(err);
       });
       stream.on('success', () => {
@@ -95,8 +92,12 @@ describe('LocalStorage', () => {
     });
   };
 
-  beforeAll(async () => {
-    storage = getStorage();
+  let tmpFolder;
+
+  beforeEach(async () => {
+    // FIXME: remove tmp folder on afterEach
+    tmpFolder = dirSync({ unsafeCleanup: true });
+    storage = getStorage(tmpFolder);
     await storage.init();
   });
 
@@ -134,13 +135,16 @@ describe('LocalStorage', () => {
       });
     });
 
-    test('should fails on add a package', (done) => {
+    test('should fails on add a package', async () => {
       const metadata = JSON.parse(readMetadata());
-      storage.addPackage(pkgName, metadata, (err) => {
-        expect(err).not.toBeNull();
-        expect(err.statusCode).toEqual(HTTP_STATUS.CONFLICT);
-        expect(err.message).toMatch(API_ERROR.PACKAGE_EXIST);
-        done();
+      await addPackageToStore(pkgName, generatePackageTemplate(pkgName));
+      return new Promise((resolve) => {
+        storage.addPackage(pkgName, metadata, (err) => {
+          expect(err).not.toBeNull();
+          expect(err.statusCode).toEqual(HTTP_STATUS.CONFLICT);
+          expect(err.message).toMatch(API_ERROR.PACKAGE_EXIST);
+          resolve(true);
+        });
       });
     });
 
@@ -298,10 +302,11 @@ describe('LocalStorage', () => {
       const version = '1.0.2';
       let _storage;
       beforeEach(async () => {
+        const tmpFolder = dirSync({ unsafeCleanup: true });
         class MockLocalStorage extends LocalStorage {}
         // @ts-ignore
         MockLocalStorage.prototype._writePackage = jest.fn(LocalStorage.prototype._writePackage);
-        _storage = getStorage(MockLocalStorage);
+        _storage = getStorage(tmpFolder, MockLocalStorage);
         await _storage.init();
         return new Promise((resolve) => {
           // @ts-expect-error
@@ -373,81 +378,102 @@ describe('LocalStorage', () => {
 
     describe('LocalStorage::tarball operations', () => {
       describe('LocalStorage::addTarball', () => {
-        test('should add a new tarball', (done) => {
+        test('should add a new tarball', async () => {
+          await addPackageToStore(pkgName, generatePackageTemplate(pkgName));
           const tarballData = JSON.parse(readMetadata('addTarball'));
           const stream = storage.addTarball(pkgName, tarballName);
-
-          stream.on('error', (err) => {
-            expect(err).toBeNull();
-            done();
-          });
-          stream.on('success', function () {
-            done();
-          });
-
           stream.end(Buffer.from(tarballData.data, 'base64'));
           stream.done();
+          return new Promise((resolve, reject) => {
+            stream.on('error', (err) => {
+              reject(err);
+            });
+            stream.on('success', function () {
+              resolve(true);
+            });
+          });
         });
 
-        test('should add a new second tarball', (done) => {
+        test('should fails on add a duplicated new tarball', async () => {
           const tarballData = JSON.parse(readMetadata('addTarball'));
-          const stream = storage.addTarball(pkgName, tarballName2);
-          stream.on('error', (err) => {
-            expect(err).toBeNull();
-            done();
-          });
-          stream.on('success', function () {
-            done();
-          });
-
-          stream.end(Buffer.from(tarballData.data, 'base64'));
-          stream.done();
-        });
-
-        test('should fails on add a duplicated new tarball', (done) => {
-          const tarballData = JSON.parse(readMetadata('addTarball'));
+          await addPackageToStore(pkgName, generatePackageTemplate(pkgName));
+          await addNewVersion(pkgName, '9.0.0');
+          const tarballName = `${pkgName}-9.0.0.tgz`;
+          await addTarballToStore(pkgName, tarballName);
           const stream = storage.addTarball(pkgName, tarballName);
-          stream.on('error', (err: VerdaccioError) => {
-            expect(err).not.toBeNull();
-            expect(err.statusCode).toEqual(HTTP_STATUS.CONFLICT);
-            expect(err.message).toMatch(/this package is already present/);
-            done();
-          });
           stream.end(Buffer.from(tarballData.data, 'base64'));
           stream.done();
+          return new Promise((resolve, reject) => {
+            stream.on('error', (err: VerdaccioError) => {
+              expect(err).not.toBeNull();
+              expect(err.statusCode).toEqual(HTTP_STATUS.CONFLICT);
+              expect(err.message).toMatch(/this package is already present/);
+              resolve(true);
+            });
+            stream.on('succes', (err) => {
+              reject(err);
+            });
+          });
         });
 
-        test('should fails on add a new tarball on missing package', (done) => {
+        test('should fails on add a new tarball on missing package', async () => {
           const tarballData = JSON.parse(readMetadata('addTarball'));
           const stream = storage.addTarball('unexsiting-package', tarballName);
-          stream.on('error', (err: VerdaccioError) => {
-            expect(err).not.toBeNull();
-            expect(err.statusCode).toEqual(HTTP_STATUS.NOT_FOUND);
-            expect(err.message).toMatch(/no such package available/);
-            done();
-          });
-
-          stream.on('success', () => {
-            done();
-          });
-
           stream.end(Buffer.from(tarballData.data, 'base64'));
           stream.done();
-        });
+          return new Promise((resolve) => {
+            stream.on('error', (err: VerdaccioError) => {
+              expect(err).not.toBeNull();
+              expect(err.statusCode).toEqual(HTTP_STATUS.NOT_FOUND);
+              expect(err.message).toMatch(/no such package available/);
+              resolve(true);
+            });
 
-        test('should fails on use invalid package name on add a new tarball', (done) => {
-          const stream = storage.addTarball(pkgName, `${pkgName}-fails-add-tarball-1.0.4.tgz`);
-          stream.on('error', function (err: VerdaccioError) {
-            expect(err).not.toBeNull();
-            expect(err.statusCode).toEqual(HTTP_STATUS.BAD_DATA);
-            expect(err.message).toMatch(/refusing to accept zero-length file/);
-            done();
+            stream.on('success', () => {
+              resolve(true);
+            });
           });
-
-          stream.done();
         });
 
-        test('should fails on abort on add a new tarball', (done) => {
+        test('should fails on use invalid content-legnth on add a new tarball', async () => {
+          // FIXME: there is a race condition here that and slow down the test
+          // might be the related with stream.done(); call.
+          const pkgName = 'pkg-name';
+          await addPackageToStore(pkgName, generatePackageTemplate(pkgName));
+          await addNewVersion(pkgName, '9.0.0');
+          const stream = storage.addTarball(pkgName, `${pkgName}-9.0.0.tgz`);
+
+          return new Promise((resolve) => {
+            stream.on('error', function (err: VerdaccioError) {
+              expect(err).not.toBeNull();
+              expect(err.statusCode).toEqual(HTTP_STATUS.BAD_DATA);
+              expect(err.message).toMatch(/refusing to accept zero-length file/);
+              resolve(true);
+            });
+            // to make this fail we avoid feed the stream
+            stream.done();
+          });
+        });
+
+        test('should fails forbidden name on add tarball', async () => {
+          const pkgName = PROTO_NAME;
+          await addPackageToStore(pkgName, generatePackageTemplate(pkgName));
+          await addNewVersion(pkgName, '9.0.0');
+          const stream = storage.addTarball(pkgName, `${pkgName}-9.0.0.tgz`);
+          return new Promise((resolve) => {
+            stream.on('error', function (err: VerdaccioError) {
+              expect(err).not.toBeNull();
+              expect(err.statusCode).toEqual(HTTP_STATUS.FORBIDDEN);
+              resolve(true);
+            });
+            stream.done();
+          });
+        });
+
+        test.todo('should fails on update data afer add version');
+
+        // TODO: restore when abort signal is being handled correctly
+        test.skip('should fails on abort on add a new tarball', (done) => {
           const stream = storage.addTarball('__proto__', `${pkgName}-fails-add-tarball-1.0.4.tgz`);
           stream.abort();
           stream.on('error', function (err: VerdaccioError) {
@@ -460,34 +486,52 @@ describe('LocalStorage', () => {
           stream.done();
         });
       });
-      describe('LocalStorage::removeTarball', () => {
-        test('should remove a tarball', (done) => {
-          storage.removeTarball(pkgName, tarballName2, 'rev', (err, pkg) => {
-            expect(err).toBeNull();
-            expect(pkg).toBeUndefined();
-            done();
+
+      describe('removeTarball', () => {
+        test('should remove a tarball', async () => {
+          const pkgName = `remove-tarball-package`;
+          const tarballName = `${pkgName}-9.0.1.tgz`;
+          await addPackageToStore(pkgName, generatePackageTemplate(pkgName));
+          await addNewVersion(pkgName, '9.0.1');
+          await addTarballToStore(pkgName, tarballName);
+          return new Promise((resolve) => {
+            storage.removeTarball(pkgName, tarballName, 'rev', (err) => {
+              expect(err).toBeNull();
+              resolve(true);
+            });
           });
         });
 
-        test('should remove a tarball that does not exist', (done) => {
-          storage.removeTarball(pkgName, tarballName2, 'rev', (err) => {
-            expect(err).not.toBeNull();
-            expect(err.statusCode).toEqual(HTTP_STATUS.NOT_FOUND);
-            expect(err.message).toMatch(/no such file available/);
-            done();
+        test('should remove a tarball that does not exist', async () => {
+          const pkgName = `remove-tarball-package-does-not-exist`;
+          await addPackageToStore(pkgName, generatePackageTemplate(pkgName));
+          await addNewVersion(pkgName, '9.0.1');
+          return new Promise((resolve) => {
+            storage.removeTarball(pkgName, tarballName2, 'rev', (err) => {
+              expect(err).not.toBeNull();
+              expect(err.statusCode).toEqual(HTTP_STATUS.NOT_FOUND);
+              expect(err.message).toMatch(/no such file available/);
+              resolve(true);
+            });
           });
         });
       });
 
       describe('LocalStorage::getTarball', () => {
-        test('should get a existing tarball', (done) => {
-          const stream = storage.getTarball(pkgName, tarballName);
-          stream.on('content-length', function (contentLength) {
-            expect(contentLength).toBe(279);
-            done();
-          });
-          stream.on('end', function () {
-            done();
+        test('should get a existing tarball', async () => {
+          const pkgName = `existing-package`;
+          await addPackageToStore(pkgName, generatePackageTemplate(pkgName));
+          await addNewVersion(pkgName, '9.0.1');
+          await addTarballToStore(pkgName, `package-9.0.0.tgz`);
+          const stream = storage.getTarball(pkgName, `package-9.0.0.tgz`);
+          return new Promise((resolve, reject) => {
+            stream.on('content-length', function (contentLength) {
+              expect(contentLength).toBe(279);
+              resolve(true);
+            });
+            stream.on('error', function (err) {
+              reject(err);
+            });
           });
         });
 
@@ -501,55 +545,51 @@ describe('LocalStorage', () => {
           });
         });
       });
+    });
 
-      describe('LocalStorage::search', () => {
-        // FIXME: flacky test, review
-        test.skip('should find a tarball', (done) => {
-          // @ts-ignore
-          const stream = storage.search('99999');
+    describe('removePackage', () => {
+      test('should remove completely package', async () => {
+        const pkgNameScoped = `non-scoped-package`;
+        await addPackageToStore(pkgNameScoped, generatePackageTemplate(pkgNameScoped));
+        await addNewVersion(pkgNameScoped, '9.0.0');
+        await addNewVersion(pkgNameScoped, '9.0.1');
+        await addTarballToStore(pkgNameScoped, `package-9.0.0.tgz`);
+        await addTarballToStore(pkgNameScoped, `package-9.0.1.tgz`);
+        await storage.removePackage(pkgNameScoped);
+      });
 
-          stream.on('error', function (err) {
-            expect(err).not.toBeNull();
-            done();
-          });
+      test('should remove completely @scoped package', async () => {
+        const pkgNameScoped = `@remove/package`;
+        await addPackageToStore(pkgNameScoped, generatePackageTemplate(pkgNameScoped));
+        await addNewVersion(pkgNameScoped, '9.0.0');
+        await addNewVersion(pkgNameScoped, '9.0.1');
+        await addTarballToStore(pkgNameScoped, `package-9.0.0.tgz`);
+        await addTarballToStore(pkgNameScoped, `package-9.0.1.tgz`);
+        await storage.removePackage(pkgNameScoped);
+      });
 
-          stream.on('end', function () {
-            done();
-          });
-        });
+      test('should fails with package not found', async () => {
+        const pkgName = 'npm_test_fake';
+        await expect(storage.removePackage(pkgName)).rejects.toThrow(API_ERROR.NO_PACKAGE);
+      });
+
+      test('should fails with @scoped package not found', async () => {
+        const pkgNameScoped = `@remove/package`;
+        await expect(storage.removePackage(pkgNameScoped)).rejects.toThrow(API_ERROR.NO_PACKAGE);
       });
     });
 
-    describe('LocalStorage::removePackage', () => {
-      test.skip('should remove completely package', (done) => {
-        storage.removePackage(pkgName, (err, data) => {
-          expect(err).toBeNull();
-          expect(data).toBeUndefined();
-          done();
-        });
-      });
+    describe('search', () => {
+      test.skip('should find a tarball', (done) => {
+        // @ts-ignore
+        const stream = storage.search('99999');
 
-      test.only('should remove completely @scoped package', (done) => {
-        storage.removePackage(pkgNameScoped, (err, data) => {
-          expect(err).toBeNull();
-          expect(data).toBeUndefined();
-          done();
-        });
-      });
-
-      test('should fails with package not found', (done) => {
-        const pkgName = 'npm_test_fake';
-        storage.removePackage(pkgName, (err) => {
+        stream.on('error', function (err) {
           expect(err).not.toBeNull();
-          expect(err.message).toMatch(/no such package available/);
           done();
         });
-      });
 
-      test('should fails with @scoped package not found', (done) => {
-        storage.removePackage(pkgNameScoped, (err) => {
-          expect(err).not.toBeNull();
-          expect(err.message).toMatch(API_ERROR.NO_PACKAGE);
+        stream.on('end', function () {
           done();
         });
       });

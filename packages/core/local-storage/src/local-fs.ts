@@ -9,13 +9,14 @@ import { UploadTarball, ReadTarball } from '@verdaccio/streams';
 import { unlockFile, readFile } from '@verdaccio/file-locking';
 import { Callback, Logger, Package, ILocalPackageManager, IUploadTarball } from '@verdaccio/types';
 import { getCode, getInternalError, getNotFound, VerdaccioError } from '@verdaccio/commons-api';
+import { unlinkPromise, rmdirPromise, readFilePromise } from './fs';
 
 export const fileExist = 'EEXISTS';
 export const noSuchFile = 'ENOENT';
 export const resourceNotAvailable = 'EAGAIN';
 export const packageJSONFileName = 'package.json';
 
-const debug = buildDebug('verdaccio:plugin:local-storage:fs');
+const debug = buildDebug('verdaccio:plugin:local-storage:local-fs');
 
 export const fSError = function (message: string, code = 409): VerdaccioError {
   const err: VerdaccioError = getCode(code, message);
@@ -135,19 +136,16 @@ export default class LocalFS implements ILocalFSPackageManager {
     });
   }
 
-  public deletePackage(
-    packageName: string,
-    callback: (err: NodeJS.ErrnoException | null) => void
-  ): void {
-    debug('delete a package %o', packageName);
+  public async deletePackage(packageName: string): Promise<void> {
+    debug('delete a file/package %o', packageName);
 
-    return fs.unlink(this._getStorage(packageName), callback);
+    return await unlinkPromise(this._getStorage(packageName));
   }
 
-  public removePackage(callback: (err: NodeJS.ErrnoException | null) => void): void {
-    debug('remove a package %o', this.path);
+  public async removePackage(): Promise<void> {
+    debug('remove a package folder %o', this.path);
 
-    fs.rmdir(this._getStorage('.'), callback);
+    await rmdirPromise(this._getStorage('.'));
   }
 
   public createPackage(name: string, value: Package, cb: Callback): void {
@@ -165,24 +163,23 @@ export default class LocalFS implements ILocalFSPackageManager {
   public readPackage(name: string, cb: Callback): void {
     debug('read a package %o', name);
 
-    this._readStorageFile(this._getStorage(packageJSONFileName)).then(
-      (res) => {
+    this._readStorageFile(this._getStorage(packageJSONFileName))
+      .then((res) => {
         try {
           const data: any = JSON.parse(res.toString('utf8'));
 
           debug('read storage file %o has succeed', name);
           cb(null, data);
         } catch (err) {
-          debug('parse storage file %o has failed with error %o', name, err);
-          cb(err);
+          debug('parse error');
+          this.logger.error({ err, name }, 'error @{err.message}  on parse @{name}');
+          throw err;
         }
-      },
-      (err) => {
-        debug('read storage file %o has failed with error %o', name, err);
-
+      })
+      .catch((err) => {
+        this.logger.error({ err }, 'error on read storage file @{err.message}');
         return cb(err);
-      }
-    );
+      });
   }
 
   public writeTarball(name: string): IUploadTarball {
@@ -309,21 +306,15 @@ export default class LocalFS implements ILocalFSPackageManager {
     });
   }
 
-  private _readStorageFile(name: string): Promise<any> {
-    return new Promise((resolve, reject): void => {
+  private async _readStorageFile(name: string): Promise<any> {
+    debug('reading the file: %o', name);
+    try {
       debug('reading the file: %o', name);
-
-      fs.readFile(name, (err, data) => {
-        if (err) {
-          debug('error reading the file: %o with error %o', name, err);
-          reject(err);
-        } else {
-          debug('read file %o succeed', name);
-
-          resolve(data);
-        }
-      });
-    });
+      return await readFilePromise(name);
+    } catch (err) {
+      debug('error reading the file: %o with error %o', name, err);
+      throw err;
+    }
   }
 
   private _convertToString(value: Package): string {

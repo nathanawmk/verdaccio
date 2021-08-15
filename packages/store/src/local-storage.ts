@@ -1,10 +1,10 @@
 import assert from 'assert';
 import UrlNode from 'url';
 import { PassThrough } from 'stream';
-import _, { countBy } from 'lodash';
+import _ from 'lodash';
 import buildDebug from 'debug';
 
-import { ErrorCode, isObject, getLatestVersion, validateName } from '@verdaccio/utils';
+import { ErrorCode, isObject, getLatestVersion } from '@verdaccio/utils';
 import { searchUtils, pluginUtils, pkgUtils, validatioUtils } from '@verdaccio/core';
 import { API_ERROR, DIST_TAGS, HTTP_STATUS, SUPPORT_ERRORS, USERS } from '@verdaccio/commons-api';
 import { createTarballHash } from '@verdaccio/utils';
@@ -80,6 +80,8 @@ export function normalizeSearchPackage(
   return result;
 }
 
+export const PROTO_NAME = '__proto__';
+
 /**
  * Implements Storage interface (same for storage.js, local-storage.js, up-storage.js).
  */
@@ -138,47 +140,48 @@ class LocalStorage {
   }
 
   /**
-   * Remove package.
-   * @param {*} name
-   * @param {*} callback
-   * @return {Function}
+   * Remove package with all it contents.
    */
-  public removePackage(name: string, callback: Callback): void {
+  public async removePackage(name: string): Promise<void> {
+    debug('remove package %s', name);
     const storage: any = this._getLocalStorage(name);
-    debug(`removing package for %o`, name);
 
     if (_.isNil(storage)) {
-      return callback(ErrorCode.getNotFound());
+      throw ErrorCode.getNotFound();
     }
 
-    storage.readPackage(name, (err, data: Package): void => {
-      if (_.isNil(err) === false) {
-        if (err.code === STORAGE.NO_SUCH_FILE_ERROR || err.code === HTTP_STATUS.NOT_FOUND) {
-          debug(`error on not found %o with error %o`, name, err.message);
-          return callback(ErrorCode.getNotFound());
-        }
-        return callback(err);
-      }
-
-      data = normalizePackage(data);
-
-      this.storagePlugin.remove(name, (removeFailed: Error): void => {
-        if (removeFailed) {
-          // This will happen when database is locked
-          debug(`the database is locked, removed has failed for %o`, name);
-
-          return callback(ErrorCode.getBadData(removeFailed.message));
-        }
-
-        storage.deletePackage(STORAGE.PACKAGE_FILE_NAME, (err): void => {
-          if (err) {
-            debug(`error on delete a package %o with error %o`, name, err.message);
-            return callback(err);
+    return new Promise((resolve, reject) => {
+      storage.readPackage(name, async (err, data: Package): Promise<void> => {
+        if (_.isNil(err) === false) {
+          if (err.code === STORAGE.NO_SUCH_FILE_ERROR || err.code === HTTP_STATUS.NOT_FOUND) {
+            debug(`error on not found %o with error %o`, name, err.message);
+            return reject(ErrorCode.getNotFound());
           }
-          const attachments = Object.keys(data._attachments);
+          return reject(err);
+        }
 
-          this._deleteAttachments(storage, attachments, callback);
-        });
+        data = normalizePackage(data);
+
+        try {
+          await this.storagePlugin.remove(name);
+          // remove each attachment
+          const attachments = Object.keys(data._attachments);
+          debug('attachments to remove %s', attachments?.length);
+          for (let attachment of attachments) {
+            debug('remove attachment %s', attachment);
+            await storage.deletePackage(attachment);
+          }
+          // remove package.json
+          debug('remove package.json');
+          await storage.deletePackage(STORAGE.PACKAGE_FILE_NAME);
+          // remove folder
+          debug('remove package folder');
+          await storage.removePackage();
+          resolve();
+        } catch (err) {
+          this.logger.error({ err }, 'removed package has failed @{err.message}');
+          throw ErrorCode.getBadData(err.message);
+        }
       });
     });
   }
@@ -383,7 +386,7 @@ class LocalStorage {
           }
 
           if (_.isNil(data.versions[tags[tag]])) {
-            return cb(this._getVersionNotFound());
+            return cb(ErrorCode.getNotFound(API_ERROR.VERSION_NOT_EXIST));
           }
           const version: string = tags[tag];
           tagVersion(data, version, tag);
@@ -392,24 +395,6 @@ class LocalStorage {
       },
       callback
     );
-  }
-
-  /**
-   * Return version not found
-   * @return {String}
-   * @private
-   */
-  private _getVersionNotFound(): VerdaccioError {
-    return ErrorCode.getNotFound(API_ERROR.VERSION_NOT_EXIST);
-  }
-
-  /**
-   * Return file no available
-   * @return {String}
-   * @private
-   */
-  private _getFileNotAvailable(): VerdaccioError {
-    return ErrorCode.getNotFound('no such file available');
   }
 
   /**
@@ -427,8 +412,11 @@ class LocalStorage {
     revision: string | void,
     callback: Callback
   ): void {
-    debug(`change package tags for %o revision`, name);
-    if (!isObject(incomingPkg.versions) || !isObject(incomingPkg[DIST_TAGS])) {
+    debug(`change package tags for %o revision %s`, name, revision);
+    if (
+      !validatioUtils.isObject(incomingPkg.versions) ||
+      !validatioUtils.isObject(incomingPkg[DIST_TAGS])
+    ) {
       debug(`change package bad data for %o`, name);
       return callback(ErrorCode.getBadData());
     }
@@ -497,26 +485,40 @@ class LocalStorage {
     revision: string,
     callback: CallbackAction
   ): void {
-    assert(validateName(filename));
-
+    debug('remove tarball %s for %s', filename, name);
+    assert(validatioUtils.validateName(filename));
     this._updatePackage(
       name,
       (data, cb): void => {
         if (data._attachments[filename]) {
+          // TODO: avoid using delete
           delete data._attachments[filename];
           cb(null);
         } else {
-          cb(this._getFileNotAvailable());
+          cb(ErrorCode.getNotFound('no such file available'));
         }
       },
-      (err: VerdaccioError): void => {
+      (err: VerdaccioError) => {
         if (err) {
+          this.logger.error({ err }, 'remove tarball error @{err.message}');
           return callback(err);
         }
         const storage = this._getLocalStorage(name);
 
         if (storage) {
-          storage.deletePackage(filename, callback);
+          debug('removing %s from storage', filename);
+          storage
+            .deletePackage(filename)
+            .then((): void => {
+              debug('package %s removed', filename);
+              return callback(null);
+            })
+            .catch((err) => {
+              this.logger.error({ err }, 'error removing %s from storage');
+              return callback(null);
+            });
+        } else {
+          callback(ErrorCode.getInternalError());
         }
       }
     );
@@ -530,7 +532,7 @@ class LocalStorage {
    */
   public addTarball(name: string, filename: string): IUploadTarball {
     debug(`add a tarball for %o`, name);
-    assert(validateName(filename));
+    assert(validatioUtils.validateName(filename));
 
     let length = 0;
     const shaOneHash = createTarballHash();
@@ -551,13 +553,14 @@ class LocalStorage {
       _transform.apply(uploadStream, appliedData);
     };
 
-    if (name === '__proto__') {
+    if (name === PROTO_NAME) {
       process.nextTick((): void => {
         uploadStream.emit('error', ErrorCode.getForbidden());
       });
       return uploadStream;
     }
 
+    // FIXME: this condition will never met, storage is always defined
     if (!storage) {
       process.nextTick((): void => {
         uploadStream.emit('error', "can't upload this package");
@@ -596,6 +599,7 @@ class LocalStorage {
       this._updatePackage(
         name,
         function updater(data, cb): void {
+          // FUTURE: move this to tarballUtils
           data._attachments[filename] = {
             shasum: shaOneHash.digest('hex'),
           };
@@ -603,6 +607,8 @@ class LocalStorage {
         },
         function (err): void {
           if (err) {
+            // FIXME: if the update package fails, remove tarball to avoid left
+            // orphan tarballs
             uploadStream.emit('error', err);
           } else {
             uploadStream.emit('success');
@@ -636,7 +642,7 @@ class LocalStorage {
    * @return {ReadTarball}
    */
   public getTarball(name: string, filename: string): IReadTarball {
-    assert(validateName(filename));
+    assert(validatioUtils.validateName(filename));
 
     const storage: IPackageStorage = this._getLocalStorage(name);
 
@@ -656,7 +662,7 @@ class LocalStorage {
     const stream: IReadTarball = new ReadTarball({});
 
     process.nextTick((): void => {
-      stream.emit('error', this._getFileNotAvailable());
+      stream.emit('error', ErrorCode.getNotFound('no such file available'));
     });
     return stream;
   }
@@ -790,6 +796,7 @@ class LocalStorage {
     storage.readPackage(name, (err, result): void => {
       if (err) {
         if (err.code === STORAGE.NO_SUCH_FILE_ERROR || err.code === HTTP_STATUS.NOT_FOUND) {
+          debug('package %s not found', name);
           return callback(ErrorCode.getNotFound());
         }
         return callback(this._internalError(err, STORAGE.PACKAGE_FILE_NAME, 'error reading'));
@@ -898,26 +905,26 @@ class LocalStorage {
     return json;
   }
 
-  private _deleteAttachments(storage: any, attachments: string[], callback: Callback): void {
-    debug('deleting %o attachments total %o', attachments?.length);
-    const unlinkNext = function (cb): void {
-      if (_.isEmpty(attachments)) {
-        return cb();
-      }
+  // private _deleteAttachments(storage: any, attachments: string[], callback: Callback): void {
+  //   debug('deleting %o attachments total %o', attachments?.length);
+  //   const unlinkNext = function (cb): void {
+  //     if (_.isEmpty(attachments)) {
+  //       return cb();
+  //     }
 
-      const attachment = attachments.shift();
-      storage.deletePackage(attachment, function (): void {
-        unlinkNext(cb);
-      });
-    };
+  //     const attachment = attachments.shift();
+  //     storage.deletePackage(attachment, function (): void {
+  //       unlinkNext(cb);
+  //     });
+  //   };
 
-    unlinkNext(function (): void {
-      // try to unlink the directory, but ignore errors because it can fail
-      storage.removePackage(function (err): void {
-        callback(err);
-      });
-    });
-  }
+  //   unlinkNext(function (): void {
+  //     // try to unlink the directory, but ignore errors because it can fail
+  //     storage.removePackage(function (err): void {
+  //       callback(err);
+  //     });
+  //   });
+  // }
 
   /**
    * Ensure the dist file remains as the same protocol

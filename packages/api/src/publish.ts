@@ -331,17 +331,20 @@ export function publishPackage(storage: Storage, config: Config, auth: IAuth): a
  * un-publish a package
  */
 export function unPublishPackage(storage: Storage) {
-  return function (req: $RequestExtend, res: $ResponseExtend, next: $NextFunctionVer): void {
+  return async function (req: $RequestExtend, res: $ResponseExtend, next: $NextFunctionVer) {
     const packageName = req.params.package;
 
     logger.debug({ packageName }, `unpublishing @{packageName}`);
-    storage.removePackage(packageName, function (err) {
+    try {
+      await storage.removePackage(packageName);
+    } catch (err) {
       if (err) {
         return next(err);
       }
+
       res.status(HTTP_STATUS.CREATED);
       return next({ ok: API_MESSAGE.PKG_REMOVED });
-    });
+    }
   };
 }
 

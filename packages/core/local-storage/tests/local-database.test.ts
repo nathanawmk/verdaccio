@@ -90,6 +90,9 @@ describe('Local Database', () => {
     });
   });
 
+  test.todo('write tarball');
+  test.todo('read tarball');
+
   // describe('getPackageStorage', () => {
   // test('should get default storage', () => {
   //   const pkgName = 'someRandomePackage';

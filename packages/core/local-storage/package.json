@@ -54,8 +54,7 @@
     "@verdaccio/types": "workspace:11.0.0-6-next.7",
     "@verdaccio/config": "workspace:6.0.0-6-next.7",
     "minimatch": "^3.0.4",
-    "tmp-promise": "3.0.2",
-    "rmdir-sync": "^1.0.1"
+    "tmp-promise": "3.0.2"
   },
   "scripts": {
     "clean": "rimraf ./build",
