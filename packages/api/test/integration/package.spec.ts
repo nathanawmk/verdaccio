@@ -49,7 +49,7 @@ describe('package', () => {
     });
   });
 
-  test.only('should return a package by version', async () => {
+  test('should return a package by version', async () => {
     await publishVersion(app, 'package.yaml', 'foo2', '1.0.0');
     return new Promise((resolve) => {
       supertest(app)

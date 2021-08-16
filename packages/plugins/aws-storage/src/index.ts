@@ -2,7 +2,6 @@ import {
   LocalStorage,
   Logger,
   Config,
-  Callback,
   IPluginStorage,
   PluginOptions,
   Token,

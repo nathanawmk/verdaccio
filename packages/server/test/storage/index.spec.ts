@@ -3,7 +3,6 @@ import fs from 'fs';
 import { Writable } from 'stream';
 import { Config as AppConfig } from '@verdaccio/config';
 import { Storage } from '@verdaccio/store';
-import { Storage } from '@verdaccio/store';
 
 import { Config } from '@verdaccio/types';
 import { API_ERROR, HTTP_STATUS } from '@verdaccio/commons-api';

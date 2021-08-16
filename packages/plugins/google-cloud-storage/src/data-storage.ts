@@ -16,7 +16,6 @@ import { entity } from '@google-cloud/datastore/build/src/entity';
 import { VerdaccioConfigGoogleStorage, GoogleDataStorage } from './types';
 import StorageHelper, { IStorageHelper } from './storage-helper';
 import GoogleCloudStorageHandler from './storage';
-import { resolve } from 'path';
 type Key = entity.Key;
 
 export const ERROR_MISSING_CONFIG =
