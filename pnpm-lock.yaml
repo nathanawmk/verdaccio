@@ -426,7 +426,6 @@ importers:
       lowdb: 1.0.0
       lru-cache: 6.0.0
       minimatch: ^3.0.4
-      rmdir-sync: ^1.0.1
       tmp-promise: 3.0.2
     dependencies:
       '@verdaccio/commons-api': link:../commons-api
@@ -445,7 +444,6 @@ importers:
       '@verdaccio/config': link:../../config
       '@verdaccio/types': link:../types
       minimatch: 3.0.4
-      rmdir-sync: 1.0.1
       tmp-promise: 3.0.2
 
   packages/core/readme:
@@ -18386,10 +18384,6 @@ packages:
     hasBin: true
     dependencies:
       glob: 7.1.7
-
-  /rmdir-sync/1.0.1:
-    resolution: {integrity: sha1-8thlTaNcOGzC/zoPE7L6m+vwCQU=}
-    dev: true
 
   /rtl-detect/1.0.4:
     resolution: {integrity: sha512-EBR4I2VDSSYr7PkBmFy04uhycIpDKp+21p/jARYXlCSjQksTBQcJ0HFUPOO79EPPH5JS6VAhiIQbycf0O3JAxQ==}
