@@ -83,6 +83,8 @@ Resources:
           Value:
             Ref: AWS::StackName
           PropagateAtLaunch: true
+        - Key: yor_trace
+          Value: 2683ae76-8730-4296-8311-65a09b34ddbe
       TargetGroupARNs:
         - Ref: Tg
       VPCZoneIdentifier:
@@ -90,7 +92,6 @@ Resources:
 
   # TODO: you may want to add target tracking scaling policy. By default the ASG
   # does not automatically scale.
-
   AsgSg:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -110,6 +111,8 @@ Resources:
         - Key: Name
           Value:
             Fn::Sub: ${AWS::StackName} ASG
+        - Key: yor_trace
+          Value: 80424e4e-343c-414d-aade-ae0c8bd92274
       VpcId:
         Ref: Vpc
   AsgSgHttpIngress:
@@ -122,7 +125,6 @@ Resources:
       IpProtocol: tcp
       SourceSecurityGroupId:
         Ref: LbSg
-
   Lc:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
@@ -175,7 +177,6 @@ Resources:
               "$IMAGE"
 
             echo "Finished user-data script in $(( $(date +%s) - start_time)) secs"
-
   Tg:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -190,7 +191,9 @@ Resources:
           Value: '10'
       VpcId:
         Ref: Vpc
-
+      Tags:
+        - Key: yor_trace
+          Value: 575aba1e-3eaf-4ea7-b686-3bfee6a7119e
   Lb:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
@@ -202,7 +205,8 @@ Resources:
         - Key: Name
           Value:
             Fn::Sub: ${AWS::StackName} ALB
-
+        - Key: yor_trace
+          Value: 07050d99-e082-4024-b038-d0720f122f8d
   LbSg:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -218,6 +222,8 @@ Resources:
         - Key: Name
           Value:
             Fn::Sub: ${AWS::StackName} LB
+        - Key: yor_trace
+          Value: add16912-21f4-41b9-9014-61e49bf132f0
       VpcId:
         Ref: Vpc
   LbSgHttpEgress:
@@ -230,7 +236,6 @@ Resources:
       IpProtocol: tcp
       DestinationSecurityGroupId:
         Ref: AsgSg
-
   LbListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
@@ -246,7 +251,6 @@ Resources:
       Port: 443
       Protocol: HTTPS
       SslPolicy: ELBSecurityPolicy-TLS-1-2-2017-01
-
   Dns:
     Type: AWS::Route53::RecordSet
     Properties:
@@ -264,7 +268,6 @@ Resources:
       Name:
         Fn::Sub: ${DnsName}.${DnsHostedZoneName}.
       Type: A
-
   Efs:
     Type: AWS::EFS::FileSystem
     Properties:
@@ -272,7 +275,6 @@ Resources:
         - Key: Name
           Value:
             Ref: AWS::StackName
-
   EfsSg:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -282,6 +284,8 @@ Resources:
         - Key: Name
           Value:
             Fn::Sub: ${AWS::StackName} EFS
+        - Key: yor_trace
+          Value: 729d9077-3eb5-4e11-9166-0f0e6cd8b6b1
       VpcId:
         Ref: Vpc
   EfsSgFsIngress:
